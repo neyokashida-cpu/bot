@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "sonhe-discord": {
+      "command": "python",
+      "args": ["c:\\Users\\Desktop\\Downloads\\sonhe-bot\\sonhe-bot\\mcp_discord_server.py"]
+    }
+  }
+}
