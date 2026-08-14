@@ -3,3 +3,4 @@ python-dotenv>=1.0.1
 mcp[cli]>=2.0.0
 httpx>=0.28.1
 anthropic>=0.40.0
+aiosqlite>=0.20.0

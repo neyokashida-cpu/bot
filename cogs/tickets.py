@@ -13,13 +13,18 @@ Sem banco de dados: o estado de cada ticket vive no tópico do canal
 ("sonhe-ticket:<autor_id>:<categoria>[:sla_avisado]") e no created_at do próprio canal.
 """
 
+import asyncio
 import datetime
 import io
+import logging
+from collections import defaultdict
 
 import discord
 from discord.ext import commands, tasks
 
 import config
+
+log = logging.getLogger("sonhe")
 
 CUSTOM_ID_SELECT = "sonhe:abrir_ticket_select"
 CUSTOM_ID_FECHAR = "sonhe:fechar_ticket"
@@ -81,6 +86,7 @@ class FecharTicketView(discord.ui.View):
 class Tickets(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+        self._locks_ticket: dict[int, asyncio.Lock] = defaultdict(asyncio.Lock)
         self.checar_sla.start()
 
     def cog_unload(self):
@@ -122,57 +128,65 @@ class Tickets(commands.Cog):
         autor = interaction.user
         dados = CATEGORIAS[categoria_chave]
 
-        existente = self._ticket_existente(guild, autor.id)
-        if existente:
+        lock = self._locks_ticket[autor.id]
+        if lock.locked():
             await interaction.response.send_message(
-                f"Você já tem um registro aberto: {existente.mention}", ephemeral=True
+                "Já estou abrindo seu registro, espera só um instante.", ephemeral=True
             )
             return
 
-        role = guild.get_role(dados["role_id"])
-        categoria = guild.get_channel(config.CATEGORY_TICKETS_ID) if config.CATEGORY_TICKETS_ID else None
-        if not isinstance(categoria, discord.CategoryChannel):
-            categoria = None
+        async with lock:
+            existente = self._ticket_existente(guild, autor.id)
+            if existente:
+                await interaction.response.send_message(
+                    f"Você já tem um registro aberto: {existente.mention}", ephemeral=True
+                )
+                return
 
-        overwrites = {
-            guild.default_role: discord.PermissionOverwrite(view_channel=False),
-            autor: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True),
-            guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True),
-        }
-        if role:
-            overwrites[role] = discord.PermissionOverwrite(view_channel=True, send_messages=True)
+            role = guild.get_role(dados["role_id"])
+            categoria = guild.get_channel(config.CATEGORY_TICKETS_ID) if config.CATEGORY_TICKETS_ID else None
+            if not isinstance(categoria, discord.CategoryChannel):
+                categoria = None
 
-        try:
-            canal = await guild.create_text_channel(
-                name=f"ticket-{_slugify(autor.name)}",
-                category=categoria,
-                overwrites=overwrites,
-                topic=f"{TOPICO_PREFIXO}:{autor.id}:{categoria_chave}",
-                reason=f"Registro aberto por {autor} — {dados['label']}",
+            overwrites = {
+                guild.default_role: discord.PermissionOverwrite(view_channel=False),
+                autor: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True),
+                guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True),
+            }
+            if role:
+                overwrites[role] = discord.PermissionOverwrite(view_channel=True, send_messages=True)
+
+            try:
+                canal = await guild.create_text_channel(
+                    name=f"ticket-{_slugify(autor.name)}",
+                    category=categoria,
+                    overwrites=overwrites,
+                    topic=f"{TOPICO_PREFIXO}:{autor.id}:{categoria_chave}",
+                    reason=f"Registro aberto por {autor} — {dados['label']}",
+                )
+            except discord.Forbidden:
+                await interaction.response.send_message(
+                    "Não consegui abrir seu registro. Avise a Direção.", ephemeral=True
+                )
+                return
+
+            embed = discord.Embed(
+                title=f"Registro — {dados['label']}",
+                description=(
+                    f"Explorador: {autor.mention}\n"
+                    f"Responsável: {role.mention if role else '—'}\n\n"
+                    "Descreva sua situação. A Expedição responsável vai te atender em breve."
+                ),
+                color=config.COR_BOAS_VINDAS_1,
             )
-        except discord.Forbidden:
-            await interaction.response.send_message(
-                "Não consegui abrir seu registro. Avise a Direção.", ephemeral=True
+            embed.set_footer(text="SONHE • Sistema de Registro")
+            await canal.send(
+                content=f"{autor.mention} {role.mention if role else ''}".strip(),
+                embed=embed,
+                view=FecharTicketView(),
             )
-            return
 
-        embed = discord.Embed(
-            title=f"Registro — {dados['label']}",
-            description=(
-                f"Explorador: {autor.mention}\n"
-                f"Responsável: {role.mention if role else '—'}\n\n"
-                "Descreva sua situação. A Expedição responsável vai te atender em breve."
-            ),
-            color=config.COR_BOAS_VINDAS_1,
-        )
-        embed.set_footer(text="SONHE • Sistema de Registro")
-        await canal.send(
-            content=f"{autor.mention} {role.mention if role else ''}".strip(),
-            embed=embed,
-            view=FecharTicketView(),
-        )
-
-        await interaction.response.send_message(f"Registro aberto: {canal.mention}", ephemeral=True)
+            await interaction.response.send_message(f"Registro aberto: {canal.mention}", ephemeral=True)
 
     async def fechar_ticket(self, interaction: discord.Interaction):
         canal = interaction.channel
@@ -215,7 +229,11 @@ class Tickets(commands.Cog):
                 continue
 
             partes = canal.topic.split(":")
-            autor_id, categoria_chave = int(partes[1]), partes[2]
+            try:
+                autor_id, categoria_chave = int(partes[1]), partes[2]
+            except (IndexError, ValueError):
+                log.warning("Tópico de ticket malformado em #%s: %r", canal.name, canal.topic)
+                continue
             role_id = CATEGORIAS.get(categoria_chave, {}).get("role_id")
             role = guild.get_role(role_id) if role_id else None
 

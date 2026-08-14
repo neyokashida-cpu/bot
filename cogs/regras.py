@@ -1,9 +1,15 @@
 """
 SONHE — Diretrizes (leia-antes)
-Spec: manual 10.3 (Discord), 10.4 (Servidor), 10.5 (Conclusao).
+Spec: manual 10.3 (Discord), 10.4 (Servidor), 10.5 (Conclusao) + introdução nova.
 
-Postar nesta ordem, uma vez, dentro de 📖・leia-antes.
-Só depois desses 3 embeds o !enviar_aceite (cogs/verification.py) faz sentido no mesmo canal.
+4 embeds, nesta ordem, com um divisor decorativo entre cada um:
+  1. Introdução — por que ler isso importa
+  2. Regras do Discord
+  3. Regras do servidor de Minecraft
+  4. Fechamento — sanções, recurso, botão de aceite
+
+Postar uma vez, dentro de 📖・leia-antes. Só depois desses embeds o !enviar_aceite
+(cogs/verification.py) faz sentido no mesmo canal.
 """
 
 import discord
@@ -14,6 +20,12 @@ import config
 COR_DIRETRIZES = 0x1B1F3B
 COR_CONCLUSAO = 0xE0A860
 
+DIVISORES = (
+    "a:Nuvens_Rosa:1536408683880124496",
+    "a:Nuvens:1536408711386632263",
+    "a:Nuvens_Rosa:1536408683880124496",
+)
+
 
 class Regras(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -23,12 +35,41 @@ class Regras(commands.Cog):
     @commands.has_permissions(administrator=True)
     async def enviar_diretrizes(self, ctx: commands.Context):
         """
-        Comando manual, só pra Direção: posta os 3 embeds de diretrizes no canal atual.
-        Use uma vez em 📖・leia-antes, antes do !enviar_aceite.
+        Comando manual, só pra Direção: posta os 4 embeds de diretrizes (com divisores)
+        no canal atual. Use uma vez em 📖・leia-antes, antes do !enviar_aceite.
         """
-        for embed in (self._embed_discord(), self._embed_servidor(), self._embed_conclusao()):
+        embeds = (
+            self._embed_introducao(),
+            self._embed_discord(),
+            self._embed_servidor(),
+            self._embed_conclusao(),
+        )
+        for i, embed in enumerate(embeds):
             await ctx.send(embed=embed)
+            if i < len(DIVISORES):
+                await ctx.send(embed=self._embed_divisor(DIVISORES[i]))
         await ctx.message.delete()
+
+    @staticmethod
+    def _embed_divisor(emoji_tag: str) -> discord.Embed:
+        linha = f"┈┈┈┈┈┈┈┈┈┈┈┈ <{emoji_tag}> ┈┈┈┈┈┈┈┈┈┈┈┈"
+        return discord.Embed(description=linha, color=COR_DIRETRIZES)
+
+    def _embed_introducao(self) -> discord.Embed:
+        descricao = (
+            "Todo lugar que vale a pena ficar tem regras. Aqui não é diferente.\n\n"
+            "Os dois documentos a seguir cobrem o Discord e o servidor de Minecraft. "
+            "A leitura é curta — mas é obrigatória, e vale pra todo mundo, sem exceção.\n\n"
+            "Ao final, um botão libera o acesso à Primeira Passagem. Antes disso, "
+            "reserve um minuto e leia com calma.\n\n"
+            "🌙 Ninguém está com pressa aqui."
+        )
+        embed = discord.Embed(title="Antes de continuar", description=descricao, color=COR_DIRETRIZES)
+        embed.set_author(name="📖 Diretrizes da Expedição", icon_url=config.ANUBIS_LOGO_URL)
+        if config.PANORAMA_SUBURBIO_URL:
+            embed.set_image(url=config.PANORAMA_SUBURBIO_URL)
+        embed.set_footer(text="SONHE • Diretrizes — Documento 01 de 04", icon_url=config.ANUBIS_LOGO_URL)
+        return embed
 
     def _embed_discord(self) -> discord.Embed:
         descricao = (
@@ -57,8 +98,8 @@ class Regras(commands.Cog):
             "Desconhecer uma diretriz não isenta de sua aplicação."
         )
         embed = discord.Embed(title="Diretrizes do Discord", description=descricao, color=COR_DIRETRIZES)
-        embed.set_author(name="📖 Diretrizes da Expedição")
-        embed.set_footer(text="SONHE • Diretrizes — Documento 01 de 03")
+        embed.set_author(name="📖 Diretrizes da Expedição", icon_url=config.ANUBIS_LOGO_URL)
+        embed.set_footer(text="SONHE • Diretrizes — Documento 02 de 04", icon_url=config.ANUBIS_LOGO_URL)
         return embed
 
     def _embed_servidor(self) -> discord.Embed:
@@ -93,7 +134,7 @@ class Regras(commands.Cog):
             "**8 · Estruturas que degradam o servidor**\n"
             "Máquinas construídas para causar lag resultam em banimento.\n\n"
             "**9 · Respeito vale dentro do jogo**\n"
-            "Todas as diretrizes do Documento 01 valem no chat do jogo, em placas, em "
+            "Todas as diretrizes do Documento 02 valem no chat do jogo, em placas, em "
             "nomes de item e em livros. Hostilidade de jogo é permitida. Ofensa a pessoa "
             "real não é.\n\n"
             "━━━━━━━━━━━━━━━━━━━━ ✦ ━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -101,8 +142,8 @@ class Regras(commands.Cog):
             "Nunca com as pessoas."
         )
         embed = discord.Embed(title="Diretrizes do Servidor", description=descricao, color=COR_DIRETRIZES)
-        embed.set_author(name="🚪 Diretrizes da Passagem")
-        embed.set_footer(text="SONHE • Diretrizes — Documento 02 de 03")
+        embed.set_author(name="🚪 Diretrizes da Passagem", icon_url=config.ANUBIS_LOGO_URL)
+        embed.set_footer(text="SONHE • Diretrizes — Documento 03 de 04", icon_url=config.ANUBIS_LOGO_URL)
         return embed
 
     def _embed_conclusao(self) -> discord.Embed:
@@ -112,7 +153,8 @@ class Regras(commands.Cog):
             "Advertência · Silenciamento · Expulsão · Banimento\n"
             "A sanção é escolhida pela gravidade, não pela ordem.\n\n"
             "**Recurso**\n"
-            f"Toda punição pode ser contestada uma única vez, em <#{config.CHANNEL_RECURSOS_ID}>.\n\n"
+            f"Toda punição pode ser contestada uma única vez — abra um registro em "
+            f"<#{config.CHANNEL_ABRIR_REGISTRO_ID}> com o motivo \"Recurso de punição\".\n\n"
             "**Alterações**\n"
             f"Diretrizes podem mudar. Toda alteração é registrada em <#{config.CHANNEL_NOVIDADES_ID}>.\n\n"
             "━━━━━━━━━━━━━━━━━━━━ ✦ ━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -122,8 +164,8 @@ class Regras(commands.Cog):
             "🌙 Bons sonhos."
         )
         embed = discord.Embed(title="Leitura concluída", description=descricao, color=COR_CONCLUSAO)
-        embed.set_author(name="🌙 Sistema de Registro")
-        embed.set_footer(text="SONHE • Diretrizes — Documento 03 de 03")
+        embed.set_author(name="🌙 Sistema de Registro", icon_url=config.ANUBIS_LOGO_URL)
+        embed.set_footer(text="SONHE • Diretrizes — Documento 04 de 04", icon_url=config.ANUBIS_LOGO_URL)
         return embed
 
 

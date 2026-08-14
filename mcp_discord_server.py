@@ -75,6 +75,61 @@ def remove_role(user_id: str, role_id: str) -> str:
 
 
 @mcp.tool()
+def create_channel(name: str, type: int = 0, parent_id: str = "", topic: str = "") -> dict:
+    """Cria um canal no servidor SONHE. type: 0=texto, 2=voz, 15=forum. parent_id opcional (categoria)."""
+    payload = {"name": name, "type": type}
+    if parent_id:
+        payload["parent_id"] = parent_id
+    if topic:
+        payload["topic"] = topic
+
+    with _client() as c:
+        r = c.post(f"/guilds/{config.GUILD_ID}/channels", json=payload)
+        r.raise_for_status()
+        data = r.json()
+        return {"id": data["id"], "name": data["name"], "type": data["type"]}
+
+
+@mcp.tool()
+def edit_channel(channel_id: str, topic: str = "", name: str = "") -> str:
+    """Edita um canal existente (assunto/topico e/ou nome). Campos vazios sao ignorados."""
+    payload = {}
+    if topic:
+        payload["topic"] = topic
+    if name:
+        payload["name"] = name
+
+    with _client() as c:
+        r = c.patch(f"/channels/{channel_id}", json=payload)
+        r.raise_for_status()
+        return "Canal atualizado."
+
+
+@mcp.tool()
+def delete_channel(channel_id: str) -> str:
+    """Apaga um canal do servidor SONHE. Irreversivel."""
+    with _client() as c:
+        r = c.delete(f"/channels/{channel_id}")
+        r.raise_for_status()
+        return "Canal apagado."
+
+
+@mcp.tool()
+def edit_application(description: str = "", tags: list[str] | None = None) -> str:
+    """Edita a descricao ('Sobre mim') e/ou as tags (max 5) do aplicativo do bot no Discord."""
+    payload = {}
+    if description:
+        payload["description"] = description
+    if tags:
+        payload["tags"] = tags[:5]
+
+    with _client() as c:
+        r = c.patch("/applications/@me", json=payload)
+        r.raise_for_status()
+        return "Aplicativo atualizado."
+
+
+@mcp.tool()
 def list_channels() -> list[dict]:
     """Lista os canais do servidor SONHE (id, nome, tipo)."""
     with _client() as c:
