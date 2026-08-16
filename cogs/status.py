@@ -101,6 +101,7 @@ class Status(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self._mensagem_id: int | None = None
+        self._ultimo_online: bool | None = None  # None = ainda não sabemos (primeira checagem)
         self.atualizar_passagem.start()
 
     def cog_unload(self):
@@ -114,9 +115,13 @@ class Status(commands.Cog):
     @tasks.loop(minutes=5)
     async def atualizar_passagem(self):
         canal = self.bot.get_channel(config.CHANNEL_PASSAGEM_ID)
+        status = await consultar_status()
+
+        await self._avisar_transicao(status is not None)
+
         if canal is None:
             return
-        embed = _embed_passagem(await consultar_status())
+        embed = _embed_passagem(status)
 
         if self._mensagem_id is not None:
             try:
@@ -136,6 +141,22 @@ class Status(commands.Cog):
                 return
 
         self._mensagem_id = (await canal.send(embed=embed)).id
+
+    async def _avisar_transicao(self, online_agora: bool):
+        """Manda um aviso avulso no chat-mine só quando o status MUDA (não a cada 5 min)."""
+        se_mudou = self._ultimo_online is not None and self._ultimo_online != online_agora
+        self._ultimo_online = online_agora
+        if not se_mudou:
+            return
+
+        canal = self.bot.get_channel(config.CHANNEL_CHAT_MINE_ID)
+        if canal is None:
+            return
+        texto = "🟢 O servidor do SONHE está online." if online_agora else "🔴 O servidor do SONHE saiu do ar."
+        try:
+            await canal.send(texto)
+        except discord.HTTPException:
+            log.exception("Falha ao avisar transição de status no chat-mine.")
 
     @atualizar_passagem.before_loop
     async def _antes(self):
