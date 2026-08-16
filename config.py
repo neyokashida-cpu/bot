@@ -32,6 +32,7 @@ CHANNEL_LEIA_ANTES_ID = 1534524827451527399       # 📖・leia-antes
 CHANNEL_O_QUE_E_ISSO_ID = 1534525087254839356     # 📚・o-que-é-isso (fórum)
 CHANNEL_NOVIDADES_ID = 1534524896191844392        # 📼・novidades
 CHANNEL_PASSAGEM_ID = 1534524941968343150         # 🚪・passagem
+CHANNEL_CHAT_MINE_ID = 0                           # TODO: cole aqui o ID real do canal chat-mine
 CHANNEL_FACA_PARTE_ID = 1534524996507144252       # 🤝・faça-parte
 CHANNEL_ADEUS_ID = 1534529010275582133            # 👋・adeus
 CHANNEL_COMANDOS_ID = 1537496944010854521         # 👾・comandos
