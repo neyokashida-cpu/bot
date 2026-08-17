@@ -62,6 +62,57 @@ function definirScorePorNome(objetivo, nomeJogador, valor) {
     return world.getDimension("overworld").runCommandAsync(`scoreboard players set "${nomeSeguro}" ${objetivo} ${valor}`);
 }
 
+// Nome amigável + artigo dos mobs mais comuns do survival, pra mensagem de
+// morte citar quem matou ("por um zumbi") em vez de um "atacado(a)" genérico.
+// O que não estiver aqui cai no typeId formatado (ver formatarNomeItem),
+// com artigo neutro "um(a)" — nunca fica sem nome.
+const NOMES_MOBS = {
+    zombie: ["um", "zumbi"],
+    husk: ["um", "zumbi do deserto"],
+    drowned: ["um", "afogado"],
+    zombie_villager: ["um", "zumbi aldeão"],
+    skeleton: ["um", "esqueleto"],
+    stray: ["um", "esqueleto glacial"],
+    wither_skeleton: ["um", "esqueleto wither"],
+    bogged: ["um", "bogged"],
+    spider: ["uma", "aranha"],
+    cave_spider: ["uma", "aranha das cavernas"],
+    creeper: ["um", "creeper"],
+    enderman: ["um", "Enderman"],
+    endermite: ["um", "endermite"],
+    witch: ["uma", "bruxa"],
+    slime: ["um", "slime"],
+    magma_cube: ["um", "cubo de magma"],
+    blaze: ["um", "blaze"],
+    ghast: ["um", "ghast"],
+    phantom: ["um", "phantom"],
+    pillager: ["um", "pilhador"],
+    vindicator: ["um", "vindicador"],
+    evocation_illager: ["um", "evocador"],
+    ravager: ["um", "arrasador"],
+    vex: ["um", "vex"],
+    piglin: ["um", "piglin"],
+    piglin_brute: ["um", "piglin brutamontes"],
+    zombie_pigman: ["um", "zumbi porco"],
+    hoglin: ["um", "hoglin"],
+    zoglin: ["um", "zoglin"],
+    wolf: ["um", "lobo"],
+    polar_bear: ["um", "urso polar"],
+    guardian: ["um", "guardião"],
+    elder_guardian: ["um", "guardião ancião"],
+    shulker: ["um", "shulker"],
+    warden: ["o", "Warden"],
+    breeze: ["um", "breeze"],
+    wither: ["o", "Wither"],
+    ender_dragon: ["o", "Dragão do Fim"],
+};
+
+function nomeMob(typeId) {
+    const chave = typeId?.replace(/^minecraft:/, "");
+    const [artigo, nome] = NOMES_MOBS[chave] ?? ["um(a)", formatarNomeItem(typeId ?? "algo")];
+    return `${artigo} ${nome}`;
+}
+
 // Cobre as causas mais comuns em survival. Qualquer causa fora dessa lista
 // cai no texto genérico do fim de mensagemMorte() — nunca fica sem mensagem.
 // Lista oficial de causas: learn.microsoft.com (.../server/entitydamagecause)
@@ -78,16 +129,20 @@ const CAUSAS_MORTE = {
     freezing: (v) => `${v} congelou.`,
     magma: (v) => `${v} pisou em magma.`,
     fallingBlock: (v) => `${v} foi esmagado(a) por um bloco.`,
-    entityExplosion: (v) => `${v} foi pego(a) numa explosão.`,
+    entityExplosion: (v, ehJogador, nomeAtacante) =>
+        nomeAtacante ? `${v} foi explodido(a) por ${nomeAtacante}.` : `${v} foi pego(a) numa explosão.`,
     blockExplosion: (v) => `${v} foi pego(a) numa explosão.`,
-    entityAttack: (v, ehJogador) => (ehJogador ? `${v} foi morto(a) por outro jogador.` : `${v} foi atacado(a) e não resistiu.`),
-    projectile: (v, ehJogador) => (ehJogador ? `${v} foi flechado(a) por outro jogador.` : `${v} foi atingido(a) por um projétil.`),
+    entityAttack: (v, ehJogador, nomeAtacante) =>
+        ehJogador ? `${v} foi morto(a) por outro jogador.` : `${v} foi atacado(a) por ${nomeAtacante} e não resistiu.`,
+    projectile: (v, ehJogador, nomeAtacante) =>
+        ehJogador ? `${v} foi flechado(a) por outro jogador.` : `${v} foi atingido(a) por um projétil de ${nomeAtacante}.`,
 };
 
 function mensagemMorte(nomeVitima, causa, quemMatou) {
     const ehJogador = quemMatou?.typeId === "minecraft:player";
+    const nomeAtacante = quemMatou && !ehJogador ? nomeMob(quemMatou.typeId) : null;
     const gerador = CAUSAS_MORTE[causa];
-    if (gerador) return gerador(nomeVitima, ehJogador);
+    if (gerador) return gerador(nomeVitima, ehJogador, nomeAtacante);
     return `${nomeVitima} não resistiu.`; // fallback genérico, cobre as causas mais raras
 }
 
