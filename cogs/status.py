@@ -103,7 +103,7 @@ class Status(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self._mensagem_id: int | None = None
-        self._ultimo_online: bool | None = None  # None = ainda não sabemos (primeira checagem)
+        self._ultimo_online: bool = False  # assume offline até a 1ª checagem — se já estiver online, isso conta como transição e dispara o aviso bonito
         self.atualizar_passagem.start()
 
     def cog_unload(self):
@@ -151,7 +151,7 @@ class Status(commands.Cog):
 
     async def _avisar_transicao(self, online_agora: bool):
         """Manda um aviso avulso no chat-mine só quando o status MUDA (não a cada 5 min)."""
-        se_mudou = self._ultimo_online is not None and self._ultimo_online != online_agora
+        se_mudou = self._ultimo_online != online_agora
         self._ultimo_online = online_agora
         if not se_mudou:
             return

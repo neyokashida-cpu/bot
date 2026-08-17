@@ -254,6 +254,12 @@ async function buscarFilaDoDiscord() {
 // Esse pack só observa e retransmite, exceto "!vincular", que é interceptado
 // (nunca aparece no chat do jogo — ver também o filtro de "!" no SonheChat_BP).
 world.beforeEvents.chatSend.subscribe((evento) => {
+    // Log de diagnóstico: se isso não aparecer no console ao mandar uma
+    // mensagem, o SonheChat_BP (que cancela o evento antes) está impedindo
+    // esse handler de rodar — nesse caso a ordem dos packs no mundo precisa
+    // trocar (SonheBridge_BP antes do SonheChat_BP).
+    console.warn(`[SonheBridge] chatSend recebido de ${evento.sender.name}: "${evento.message}"`);
+
     const mensagem = evento.message.trim();
     if (mensagem.toLowerCase() === "!vincular") {
         evento.cancel = true;
