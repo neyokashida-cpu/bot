@@ -1,0 +1,18 @@
+{
+    "format_version": 2,
+    "header": {
+        "name": "SONHE Chat & Boas-vindas (Recursos)",
+        "description": "Resource pack complementar do SonheChat (sem texturas customizadas).",
+        "uuid": "1afb8ca5-5349-41cb-8ed6-335f21be1d9f",
+        "version": [1, 0, 0],
+        "min_engine_version": [1, 21, 50]
+    },
+    "modules": [
+        {
+            "description": "Modulo de recursos do SonheChat",
+            "type": "resources",
+            "uuid": "da4a1698-6c08-4d35-ae1a-fe10013057f7",
+            "version": [1, 0, 0]
+        }
+    ]
+}

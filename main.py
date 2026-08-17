@@ -30,6 +30,9 @@ COGS = [
     "cogs.sugestoes",
     "cogs.economia",
     "cogs.mines",
+    "cogs.status",
+    "cogs.vinculacao",
+    "cogs.bridge",
 ]
 
 _sincronizado = False

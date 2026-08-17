@@ -1,0 +1,30 @@
+{
+    "format_version": 2,
+    "header": {
+        "name": "SONHE Bridge (Discord)",
+        "description": "Ponte de chat com o Discord via @minecraft/server-net. Pack separado do SonheChat de propósito — se o server-net não estiver liberado no host, só esse pack falha, o resto continua normal.",
+        "uuid": "2a1a9d96-c753-4ae0-bab2-af50352a9c5c",
+        "version": [1, 0, 0],
+        "min_engine_version": [1, 21, 50]
+    },
+    "modules": [
+        {
+            "description": "Script da ponte Discord <-> Minecraft",
+            "type": "script",
+            "language": "javascript",
+            "uuid": "7a3660a4-c2a8-497d-989a-5b59a07bd0f8",
+            "entry": "scripts/main.js",
+            "version": [1, 0, 0]
+        }
+    ],
+    "dependencies": [
+        {
+            "module_name": "@minecraft/server",
+            "version": "2.10.0-beta"
+        },
+        {
+            "module_name": "@minecraft/server-net",
+            "version": "1.0.0-beta.1.26.50-preview.25"
+        }
+    ]
+}

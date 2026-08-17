@@ -165,7 +165,7 @@ class Chat(commands.Cog):
         if not texto_limpo:
             texto_limpo = "(a pessoa só te mencionou/mandou mensagem sem texto, tipo só um oi)"
 
-        cargo = "ADMINISTRACAO" if self._eh_administracao(message.author) else "MEMBRO"
+        cargo = "ADMIN" if self._eh_administracao(message.author) else "MEMBRO"
         texto_com_cargo = f"[CARGO:{cargo}] {texto_limpo}"
 
         chave = (message.channel.id, message.author.id)
