@@ -5,6 +5,8 @@ casamento — tudo que precisa sobreviver a um restart do bot.
 """
 
 import datetime
+import random
+import string
 
 import aiosqlite
 
@@ -31,6 +33,13 @@ CREATE TABLE IF NOT EXISTS propostas_casamento (
     alvo_id INTEGER NOT NULL,
     criado_em TEXT NOT NULL,
     PRIMARY KEY (proponente_id, alvo_id)
+);
+
+CREATE TABLE IF NOT EXISTS codigos_vinculo (
+    codigo TEXT PRIMARY KEY,
+    minecraft_nome TEXT NOT NULL,
+    moedas_iniciais INTEGER NOT NULL DEFAULT 0,
+    criado_em TEXT NOT NULL
 );
 """
 
@@ -195,28 +204,53 @@ async def divorciar(user_a: int, user_b: int):
 
 
 # ── Vinculação Minecraft ↔ Discord ──────────────────────────
-# Fluxo atual (sem confirmação automática — ver notas do projeto):
-#   1. /vincular <nome> grava status "pendente" + um código curto.
-#   2. Um Guarda/Direção confirma manualmente com /admin link depois de
-#      verificar o jogador (o código serve de conferência rápida).
-# Se um dia o bridge Minecraft→backend existir de verdade, a confirmação
-# automática pode chamar confirmar_vinculo() direto, sem mudar o schema.
+# Fluxo atual (automático, via bridge — precisa de @minecraft/server-net
+# liberado no host, ver ADDONS/SonheBridge_BP):
+#   1. O jogador roda "!vincular" dentro do jogo. O addon manda o nome dele
+#      (e o saldo atual do placar sonhe_moedas) pro bot via HTTP.
+#   2. O bot gera um código curto de uso único (criar_codigo_vinculo) e
+#      devolve pro jogo — o addon mostra o código só pra esse jogador.
+#   3. O jogador roda /vincular <código> no Discord. Se o código bater e não
+#      tiver expirado, o vínculo é confirmado na hora, sem staff.
+# /admin link e /admin unlink continuam existindo como override manual pra
+# staff (ex: jogador sem acesso ao Discord no momento, ou correção de erro).
 
 
-async def registrar_vinculo_pendente(user_id: int, nome_minecraft: str, codigo: str):
+async def criar_codigo_vinculo(nome_minecraft: str, moedas_iniciais: int = 0) -> str:
+    """Gera um código de uso único pro jogador confirmar no Discord com /vincular."""
+    codigo = "".join(random.choices(string.ascii_uppercase + string.digits, k=4))
     agora = datetime.datetime.now(datetime.timezone.utc).isoformat()
     async with aiosqlite.connect(CAMINHO_DB) as db:
-        await _garantir_perfil(db, user_id)
         await db.execute(
-            "UPDATE perfis SET minecraft_nome = ?, minecraft_status = 'pendente', "
-            "minecraft_codigo = ?, minecraft_vinculado_em = ? WHERE user_id = ?",
-            (nome_minecraft, codigo, agora, user_id),
+            "INSERT OR REPLACE INTO codigos_vinculo (codigo, minecraft_nome, moedas_iniciais, criado_em) "
+            "VALUES (?, ?, ?, ?)",
+            (codigo, nome_minecraft, moedas_iniciais, agora),
         )
         await db.commit()
+    return codigo
+
+
+async def consumir_codigo_vinculo(codigo: str, minutos_validade: int) -> dict | None:
+    """Apaga o código (uso único) e retorna {minecraft_nome, moedas_iniciais} se ainda era válido."""
+    codigo = codigo.strip().upper()
+    async with aiosqlite.connect(CAMINHO_DB) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("SELECT * FROM codigos_vinculo WHERE codigo = ?", (codigo,))
+        linha = await cursor.fetchone()
+        if not linha:
+            return None
+        await db.execute("DELETE FROM codigos_vinculo WHERE codigo = ?", (codigo,))
+        await db.commit()
+
+    criado_em = datetime.datetime.fromisoformat(linha["criado_em"])
+    agora = datetime.datetime.now(datetime.timezone.utc)
+    if agora - criado_em > datetime.timedelta(minutes=minutos_validade):
+        return None
+    return {"minecraft_nome": linha["minecraft_nome"], "moedas_iniciais": linha["moedas_iniciais"]}
 
 
 async def confirmar_vinculo(user_id: int, nome_minecraft: str):
-    """Uso por staff (/admin link) ou, no futuro, por confirmação automática."""
+    """Uso por staff (/admin link) ou pela confirmação automática via código."""
     agora = datetime.datetime.now(datetime.timezone.utc).isoformat()
     async with aiosqlite.connect(CAMINHO_DB) as db:
         await _garantir_perfil(db, user_id)

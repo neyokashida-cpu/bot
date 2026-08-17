@@ -14,6 +14,7 @@ load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 BRIDGE_SECRET = os.getenv("BRIDGE_SECRET")  # autentica as chamadas addon -> bridge HTTP
+VALIDADE_CODIGO_VINCULO_MINUTOS = 15  # tempo que o jogador tem pra usar o código do !vincular no Discord
 CLAUDE_MODEL = "claude-sonnet-5"
 
 # ── Servidor ───────────────────────────────────────────
@@ -32,7 +33,7 @@ CHANNEL_LEIA_ANTES_ID = 1534524827451527399       # 📖・leia-antes
 CHANNEL_O_QUE_E_ISSO_ID = 1534525087254839356     # 📚・o-que-é-isso (fórum)
 CHANNEL_NOVIDADES_ID = 1534524896191844392        # 📼・novidades
 CHANNEL_PASSAGEM_ID = 1534524941968343150         # 🚪・passagem
-CHANNEL_CHAT_MINE_ID = 1538219830040076308                           # TODO: cole aqui o ID real do canal chat-mine
+CHANNEL_CHAT_MINE_ID = 1538219830040076308        # 💬・chat-mine
 CHANNEL_FACA_PARTE_ID = 1534524996507144252       # 🤝・faça-parte
 CHANNEL_ADEUS_ID = 1534529010275582133            # 👋・adeus
 CHANNEL_COMANDOS_ID = 1537496944010854521         # 👾・comandos
@@ -91,11 +92,11 @@ ROLE_LENDA_DO_SONHE_ID = 1534589483356524717      # ⭐ Lenda do Sonhe (75)
 # Usado pelo /perfil e pelo ganho de XP por mensagem (cogs/economia.py).
 NIVEIS_XP = (
     (0, ROLE_RECEM_CHEGADO_ID, "👋 Recém-chegado"),
-    (5, ROLE_EXPLORADOR_ID, "🧭 Explorador"),
-    (15, ROLE_INVESTIGADOR_ID, "🔍 Investigador"),
-    (30, ROLE_GUARDIAO_DE_PASSAGENS_ID, "🗝️ Guardião de Passagens"),
-    (50, ROLE_VETERANO_ID, "🌙 Veterano da Expedição"),
-    (75, ROLE_LENDA_DO_SONHE_ID, "⭐ Lenda do Sonhe"),
+    (50, ROLE_EXPLORADOR_ID, "🧭 Explorador"),
+    (200, ROLE_INVESTIGADOR_ID, "🔍 Investigador"),
+    (800, ROLE_GUARDIAO_DE_PASSAGENS_ID, "🗝️ Guardião de Passagens"),
+    (3000, ROLE_VETERANO_ID, "🌙 Veterano da Expedição"),
+    (10000, ROLE_LENDA_DO_SONHE_ID, "⭐ Lenda do Sonhe"),
 )
 
 # ── Economia (Statz) ────────────────────────────────────

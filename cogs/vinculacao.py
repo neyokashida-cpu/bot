@@ -1,21 +1,34 @@
 """
 SONHE — Vinculação Minecraft ↔ Discord
-Comandos: /vincular, /desvincular, /admin link, /admin unlink
+Comandos: /vincular, /admin link, /admin unlink
 
-Fluxo atual (ver auditoria do projeto pra entender o motivo):
-  1. O membro roda /vincular <nome> no Discord e recebe um código curto.
-  2. Um Guarda/Direção/dono confirma com /admin link depois de checar o
-     jogador (o código serve de conferência rápida, não é prova criptográfica).
-A confirmação não é automática porque o bridge addon → backend depende de
-@minecraft/server-net (hoje pré-lançamento, exige acesso ao permissions.json
-do servidor — hosts com painel tipo Aternos normalmente não expõem isso).
-Se isso mudar, confirmar_vinculo() em database.py já está pronta pra ser
-chamada por um caminho automático, sem mudar o schema.
+Fluxo atual (automático, via SonheBridge_BP — precisa de @minecraft/server-net
+liberado no host):
+  1. O jogador roda "!vincular" dentro do jogo. O addon manda o nome dele pro
+     bot, que gera um código de uso único e devolve — o addon mostra esse
+     código só pra esse jogador (cogs/bridge.py trata a solicitação).
+  2. O jogador roda /vincular <código> aqui no Discord. Se o código bater e
+     não tiver expirado (config.VALIDADE_CODIGO_VINCULO_MINUTOS), o vínculo é
+     confirmado na hora — sem staff.
+  3. Se o jogador tinha moedas no placar sonhe_moedas do Minecraft, elas são
+     somadas ao Statz do Discord nesse momento (soma única, não sincronização
+     contínua — depois disso o Statz do Discord é a fonte única de verdade).
+
+Rank/Tag no Minecraft vêm do cargo real do Discord (não são mais setados à
+mão): rank = Dono/Admin/Staff se o cargo de staff correspondente existir, ou
+Membro caso contrário; tag = a progressão de XP atual (Explorador, Lenda...).
+São enviados via cogs/bridge.py (fila + polling do addon) sempre que o
+vínculo é confirmado, e de novo a cada level up (ver cogs/economia.py).
+/admin resync existe pra forçar o reenvio manualmente (ex: depois de uma
+promoção de staff, que não dispara level up nenhum).
+
+Só staff pode desvincular (/admin unlink) — de propósito, pra evitar que
+alguém perca o vínculo (e o histórico de moedas somadas) sem querer.
+/admin link continua existindo como override manual (ex: jogador sem acesso
+ao Discord no momento, ou correção de erro).
 """
 
 import logging
-import random
-import string
 
 import discord
 from discord import app_commands
@@ -25,10 +38,6 @@ import config
 import database
 
 log = logging.getLogger("sonhe")
-
-
-def _gerar_codigo() -> str:
-    return "".join(random.choices(string.ascii_uppercase + string.digits, k=4))
 
 
 class Vinculacao(commands.Cog):
@@ -55,28 +64,61 @@ class Vinculacao(commands.Cog):
             },
         )
 
+    # ── rank/tag no Minecraft, derivados do cargo real do Discord ──────
+    @staticmethod
+    def _indice_rank(membro: discord.Member) -> int:
+        """0=Visitante (sem vínculo, nunca setado por aqui) 1=Membro 2=Staff 3=Admin 4=Dono."""
+        cargos_ids = {c.id for c in membro.roles}
+        if config.ROLE_ANUBIS_DONO_ID in cargos_ids:
+            return 4
+        if config.ROLE_DIRECAO_ID in cargos_ids:
+            return 3
+        if config.ROLE_GUARDA_ID in cargos_ids or config.ROLE_RECEPCAO_ID in cargos_ids:
+            return 2
+        return 1
+
+    @staticmethod
+    def _indice_tag(xp: int) -> int:
+        """0=sem tag, 1..6 = NIVEIS_XP[0..5] (mesma ordem do array TAGS no addon)."""
+        indice = 0
+        for i, (limite, _, _) in enumerate(config.NIVEIS_XP):
+            if xp >= limite:
+                indice = i + 1
+        return indice
+
+    def _enfileirar_rank_tag(self, nome_minecraft: str, rank: int, tag: int):
+        bridge = self.bot.get_cog("Bridge")
+        if bridge is None:
+            log.warning("Vinculacao: cog Bridge não carregado, não deu pra enfileirar rank/tag.")
+            return
+        bridge.fila_para_minecraft.append({"tipo": "definir_rank", "jogador": nome_minecraft, "rank": rank})
+        bridge.fila_para_minecraft.append({"tipo": "definir_tag", "jogador": nome_minecraft, "tag": tag})
+
     # ── /vincular ────────────────────────────────────────────
     @app_commands.command(
-        name="vincular", description="Registra seu nome do Minecraft pra vincular com seu Discord."
+        name="vincular", description="Confirma o vínculo com o código que você recebeu no jogo (!vincular)."
     )
-    @app_commands.describe(nome_minecraft="Seu gamertag/nome exatamente como aparece no jogo")
-    async def vincular(self, interaction: discord.Interaction, nome_minecraft: str):
-        nome_minecraft = nome_minecraft.strip()
-        if not nome_minecraft or len(nome_minecraft) > 32:
-            await interaction.response.send_message(
-                "Esse nome não parece certo — manda exatamente como aparece no Minecraft (até 32 caracteres).",
-                ephemeral=True,
-            )
-            return
-
+    @app_commands.describe(codigo="O código de 4 dígitos que apareceu pra você dentro do Minecraft")
+    async def vincular(self, interaction: discord.Interaction, codigo: str):
         perfil = await database.obter_perfil(interaction.user.id)
         if perfil["minecraft_status"] == "confirmado":
             await interaction.response.send_message(
                 f"Você já está vinculado como **{perfil['minecraft_nome']}**. "
-                "Usa `/desvincular` primeiro se quiser trocar.",
+                "Só a ANÚBIS pode desfazer esse vínculo.",
                 ephemeral=True,
             )
             return
+
+        resultado = await database.consumir_codigo_vinculo(codigo, config.VALIDADE_CODIGO_VINCULO_MINUTOS)
+        if resultado is None:
+            await interaction.response.send_message(
+                "Esse código não existe ou expirou. Roda `!vincular` de novo dentro do jogo pra gerar outro.",
+                ephemeral=True,
+            )
+            return
+
+        nome_minecraft = resultado["minecraft_nome"]
+        moedas = resultado["moedas_iniciais"]
 
         existente = await database.obter_vinculo_confirmado_por_nome(nome_minecraft)
         if existente and existente["user_id"] != interaction.user.id:
@@ -86,33 +128,20 @@ class Vinculacao(commands.Cog):
             )
             return
 
-        codigo = _gerar_codigo()
-        await database.registrar_vinculo_pendente(interaction.user.id, nome_minecraft, codigo)
+        await database.confirmar_vinculo(interaction.user.id, nome_minecraft)
 
-        embed = discord.Embed(
-            title="🌙 Código de vinculação",
-            description=(
-                f"Nome registrado: **{nome_minecraft}**\n\n"
-                f"Código: **SONHE-{codigo}**\n\n"
-                "Fica com esse código e avisa um membro da ANÚBIS em jogo (ou em "
-                "🎫・abrir-registro) pra confirmar. Isso ainda é feito à mão — assim "
-                "que o vínculo automático existir, esse passo some."
-            ),
-            color=config.COR_DREAMCORE,
-        )
+        if isinstance(interaction.user, discord.Member):
+            self._enfileirar_rank_tag(nome_minecraft, self._indice_rank(interaction.user), self._indice_tag(perfil["xp"]))
+
+        descricao = f"Vinculado ao Minecraft **{nome_minecraft}**."
+        if moedas > 0:
+            await database.ajustar_statz(interaction.user.id, moedas)
+            descricao += f"\n\n{config.EMOJI_MOEDA} {moedas} {config.NOME_MOEDA} do jogo somadas ao seu saldo."
+        descricao += "\n\nSeu rank e tag no jogo devem atualizar em alguns segundos (precisa do servidor online)."
+
+        embed = discord.Embed(title="🌙 Vínculo confirmado", description=descricao, color=config.COR_DREAMCORE)
         embed.set_footer(text="Projeto Sonhe • Created by Team ANÚBIS.")
         await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    # ── /desvincular ─────────────────────────────────────────
-    @app_commands.command(name="desvincular", description="Remove o vínculo do seu Minecraft com esse Discord.")
-    async def desvincular(self, interaction: discord.Interaction):
-        perfil = await database.obter_perfil(interaction.user.id)
-        if not perfil["minecraft_status"]:
-            await interaction.response.send_message("Você não tem nenhum vínculo registrado.", ephemeral=True)
-            return
-
-        await database.desvincular_minecraft(interaction.user.id)
-        await interaction.response.send_message("Vínculo removido.", ephemeral=True)
 
     # ── /admin ───────────────────────────────────────────────
     admin_group = app_commands.Group(name="admin", description="Comandos administrativos do SONHE")
@@ -135,6 +164,9 @@ class Vinculacao(commands.Cog):
             return
 
         await database.confirmar_vinculo(membro.id, nome_minecraft)
+        perfil_membro = await database.obter_perfil(membro.id)
+        self._enfileirar_rank_tag(nome_minecraft, self._indice_rank(membro), self._indice_tag(perfil_membro["xp"]))
+
         await interaction.response.send_message(
             f"✅ {membro.mention} vinculado como **{nome_minecraft}**.", ephemeral=True
         )
@@ -152,6 +184,27 @@ class Vinculacao(commands.Cog):
 
         await database.desvincular_minecraft(membro.id)
         await interaction.response.send_message(f"Vínculo de {membro.mention} removido.", ephemeral=True)
+
+    @admin_group.command(
+        name="resync", description="[Staff] Reenvia o rank/tag do Minecraft de um membro já vinculado."
+    )
+    @app_commands.describe(membro="Quem vai ter o rank/tag re-sincronizado")
+    async def admin_resync(self, interaction: discord.Interaction, membro: discord.Member):
+        if not self._eh_administracao(interaction.user):
+            await interaction.response.send_message("Só a ANÚBIS pode usar esse comando.", ephemeral=True)
+            return
+
+        perfil = await database.obter_perfil(membro.id)
+        if perfil["minecraft_status"] != "confirmado":
+            await interaction.response.send_message(f"{membro.mention} não tem vínculo confirmado.", ephemeral=True)
+            return
+
+        self._enfileirar_rank_tag(perfil["minecraft_nome"], self._indice_rank(membro), self._indice_tag(perfil["xp"]))
+        await interaction.response.send_message(
+            f"🔄 Rank/tag de **{perfil['minecraft_nome']}** vão atualizar em alguns segundos "
+            "(precisa do servidor Minecraft online).",
+            ephemeral=True,
+        )
 
 
 async def setup(bot: commands.Bot):

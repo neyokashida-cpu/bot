@@ -1,0 +1,36 @@
+{
+    "format_version": 2,
+    "header": {
+        "name": "SONHE Chat & Boas-vindas",
+        "description": "Boas-vindas com contagem de jogadores + chat com Rank e Tag.",
+        "uuid": "bc2d468e-f1b6-40d0-a95e-516d176d5059",
+        "version": [1, 0, 0],
+        "min_engine_version": [1, 21, 50]
+    },
+    "modules": [
+        {
+            "description": "Módulo de dados do SonheChat",
+            "type": "data",
+            "uuid": "ab145cb2-918c-4313-b212-b707dbfdecc4",
+            "version": [1, 0, 0]
+        },
+        {
+            "description": "Scripts do SonheChat",
+            "type": "script",
+            "language": "javascript",
+            "uuid": "b02cafb3-63c7-4902-8957-438f8312c068",
+            "entry": "scripts/main.js",
+            "version": [1, 0, 0]
+        }
+    ],
+    "dependencies": [
+        {
+            "uuid": "1afb8ca5-5349-41cb-8ed6-335f21be1d9f",
+            "version": [1, 0, 0]
+        },
+        {
+            "module_name": "@minecraft/server",
+            "version": "2.10.0-beta"
+        }
+    ]
+}

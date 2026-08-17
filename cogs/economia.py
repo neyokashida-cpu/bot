@@ -70,12 +70,21 @@ class Economia(commands.Cog):
         tier_depois = _nivel_atual(xp_depois)
         if tier_depois != tier_antes:
             await self._atualizar_cargo_nivel(message.author, tier_depois)
+            if perfil["minecraft_status"] == "confirmado":
+                self._sincronizar_tag_minecraft(perfil["minecraft_nome"], config.NIVEIS_XP.index(tier_depois) + 1)
             try:
                 await message.channel.send(
                     f"🌙 {message.author.mention} deu mais um passo no sonho — agora é **{tier_depois[2]}**."
                 )
             except discord.HTTPException:
                 log.exception("Falha ao anunciar nível novo de %s", message.author)
+
+    def _sincronizar_tag_minecraft(self, nome_minecraft: str, indice_tag: int):
+        """Manda a nova tag pro Minecraft (rank não muda aqui — level up não afeta staff/dono)."""
+        bridge = self.bot.get_cog("Bridge")
+        if bridge is None:
+            return
+        bridge.fila_para_minecraft.append({"tipo": "definir_tag", "jogador": nome_minecraft, "tag": indice_tag})
 
     async def _atualizar_cargo_nivel(self, member: discord.Member, tier_novo):
         roles_para_remover = []
