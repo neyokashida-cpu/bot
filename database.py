@@ -41,6 +41,14 @@ CREATE TABLE IF NOT EXISTS codigos_vinculo (
     moedas_iniciais INTEGER NOT NULL DEFAULT 0,
     criado_em TEXT NOT NULL
 );
+
+-- Pares chave/valor genéricos pra estado do bot que precisa sobreviver a um
+-- restart mas não justifica tabela própria (ex: ID da mensagem fixa de
+-- #passagem — ver cogs/status.py).
+CREATE TABLE IF NOT EXISTS estado (
+    chave TEXT PRIMARY KEY,
+    valor TEXT NOT NULL
+);
 """
 
 
@@ -268,6 +276,23 @@ async def desvincular_minecraft(user_id: int):
             "UPDATE perfis SET minecraft_nome = NULL, minecraft_status = NULL, "
             "minecraft_codigo = NULL, minecraft_vinculado_em = NULL WHERE user_id = ?",
             (user_id,),
+        )
+        await db.commit()
+
+
+async def obter_estado(chave: str) -> str | None:
+    async with aiosqlite.connect(CAMINHO_DB) as db:
+        cursor = await db.execute("SELECT valor FROM estado WHERE chave = ?", (chave,))
+        linha = await cursor.fetchone()
+        return linha[0] if linha else None
+
+
+async def definir_estado(chave: str, valor: str):
+    async with aiosqlite.connect(CAMINHO_DB) as db:
+        await db.execute(
+            "INSERT INTO estado (chave, valor) VALUES (?, ?) "
+            "ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor",
+            (chave, valor),
         )
         await db.commit()
 

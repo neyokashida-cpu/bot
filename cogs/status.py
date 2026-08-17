@@ -15,6 +15,7 @@ Endereço/Porta/Status) — só o conteúdo muda entre online/offline.
 """
 
 import logging
+import random
 
 import discord
 from discord import app_commands
@@ -22,17 +23,39 @@ from discord.ext import commands, tasks
 from mcstatus import BedrockServer
 
 import config
+import database
+
+CHAVE_ESTADO_MENSAGEM = "passagem_mensagem_id"
 
 log = logging.getLogger("sonhe")
 
 SEPARADOR = "━━━━━━━━━━━━━━━━━━━━ ✦ ━━━━━━━━━━━━━━━━━━━━"
 
-# Mesma imagem já usada no embed original de #passagem (porta no meio do trigal).
-# É um link de CDN do Discord assinado — pode expirar (ver memória do projeto).
-THUMBNAIL_PASSAGEM = (
-    "https://cdn.discordapp.com/attachments/1533795653812093020/1537423462841327646/"
-    "iamages.png?ex=6a7efcad&is=6a7dab2d&"
-    "hm=aafd861c26cd920f60986480ba8483d37579e93ca14e56b156b6b2057d742c22&"
+# Pool de imagens pra quando o servidor está OFFLINE/dormindo — tema "acordar
+# do sonho" (o jogo te força a acordar). Sorteada tanto no embed fixo de
+# #passagem quanto no aviso avulso de "saiu do ar" no chat-mine.
+THUMBNAILS_PASSAGEM_OFFLINE = (
+    "https://cdn.discordapp.com/attachments/1533795653812093020/1538951904061821018/"
+    "ac4.jfif?ex=6a848c26&is=6a833aa6&hm=0ddeafbac281c87ee4425a404b698379090633dba532d4374bc24e610d08c0c9&",
+    "https://cdn.discordapp.com/attachments/1533795653812093020/1538951904363806832/"
+    "ac3.jfif?ex=6a848c26&is=6a833aa6&hm=534bb7a50c6597c5d510faa3f54b3674e3690eb5e4ba22450974173a9775676f&",
+    "https://cdn.discordapp.com/attachments/1533795653812093020/1538951904753619114/"
+    "ac2.jfif?ex=6a848c26&is=6a833aa6&hm=fc93376ae4b03171a61744975d650837b502c9b671f2c9e52b7cfd9dc43b75b4&",
+    "https://cdn.discordapp.com/attachments/1533795653812093020/1538951905118658620/"
+    "ac.jfif?ex=6a848c26&is=6a833aa6&hm=bf5ae6da7e502f6ddcb26612a6af13b7cfad4ee8b0fb3360de31699ace7dd6a8&",
+    "https://cdn.discordapp.com/attachments/1533795653812093020/1538952272376242286/"
+    "images_6.jfif?ex=6a848c7e&is=6a833afe&hm=c2d7cdecf2b8791e4b6f403fac6b811f787537851228af234cc48467e655ef22&",
+)
+
+# Pool de imagens pra quando o servidor está ONLINE — sorteia uma a cada
+# atualização do embed, pra não ficar sempre com a mesma thumbnail.
+THUMBNAILS_PASSAGEM_ONLINE = (
+    "https://cdn.discordapp.com/attachments/1533795653812093020/1538950865476526200/"
+    "ab2.png?ex=6a848b2e&is=6a8339ae&hm=2f69382d1c7ed9198e5998ef6b242ae5dfc1db40fb3030c5de706d9ec6c84753&",
+    "https://cdn.discordapp.com/attachments/1533795653812093020/1538950865006755981/"
+    "ab3.png?ex=6a848b2e&is=6a8339ae&hm=231d1aef26af19e29696d6ec16c110343f9b8025ab9e8bedcd1a5344321d8f2c&",
+    "https://cdn.discordapp.com/attachments/1533795653812093020/1538950864503312434/"
+    "ab4.png?ex=6a848b2e&is=6a8339ae&hm=8e94f3c2ee4da533570d1c6b8b49d50b31aeff9d3a18c0e67f2f07336b0832cb&",
 )
 
 
@@ -102,9 +125,11 @@ def _embed_passagem(status: dict | None) -> discord.Embed:
             "Copie o endereço e a porta exatamente como estão acima."
         )
 
+    thumbnail = random.choice(THUMBNAILS_PASSAGEM_ONLINE if status is not None else THUMBNAILS_PASSAGEM_OFFLINE)
+
     embed = discord.Embed(title="🚪 Primeira Passagem", description=descricao, color=config.COR_BOAS_VINDAS_1)
     embed.set_author(name="🌙 Sistema de Acesso")
-    embed.set_thumbnail(url=THUMBNAIL_PASSAGEM)
+    embed.set_thumbnail(url=thumbnail)
     embed.set_footer(text="Projeto Sonhe • Created by Team ANÚBIS.")
     return embed
 
@@ -147,17 +172,27 @@ class Status(commands.Cog):
                 log.exception("Falha ao editar embed de #passagem.")
                 return
 
+        # Sem ID em memória (1ª rodada após restart) — tenta o scan de
+        # histórico como último recurso antes de assumir que precisa criar
+        # uma mensagem nova (evita duplicar o embed fixo a cada deploy).
         async for msg in canal.history(limit=20):
             if msg.author.id == self.bot.user.id:
-                self._mensagem_id = msg.id
+                await self._salvar_mensagem_id(msg.id)
                 await msg.edit(embed=embed)
                 return
 
-        self._mensagem_id = (await canal.send(embed=embed)).id
+        await self._salvar_mensagem_id((await canal.send(embed=embed)).id)
+
+    async def _salvar_mensagem_id(self, mensagem_id: int):
+        self._mensagem_id = mensagem_id
+        await database.definir_estado(CHAVE_ESTADO_MENSAGEM, str(mensagem_id))
 
     @atualizar_passagem.before_loop
     async def _antes(self):
         await self.bot.wait_until_ready()
+        valor = await database.obter_estado(CHAVE_ESTADO_MENSAGEM)
+        if valor is not None:
+            self._mensagem_id = int(valor)
 
     async def _avisar_transicao(self, online_agora: bool):
         """Manda um aviso avulso no chat-mine só quando o status MUDA (não a cada 5 min)."""
@@ -175,12 +210,14 @@ class Status(commands.Cog):
                 description="O servidor do SONHE está online. Bora explorar! 🟢",
                 color=0x57A64A,
             )
+            embed.set_thumbnail(url=random.choice(THUMBNAILS_PASSAGEM_ONLINE))
         else:
             embed = discord.Embed(
                 title="🚪 A Primeira Passagem fechou",
-                description="O servidor do SONHE saiu do ar. Volta mais tarde. 🔴",
+                description="O sonho te soltou por agora. Volta mais tarde. 🔴",
                 color=0x8A8A8A,
             )
+            embed.set_thumbnail(url=random.choice(THUMBNAILS_PASSAGEM_OFFLINE))
         embed.set_footer(text="Projeto Sonhe • Created by Team ANÚBIS.")
         try:
             await canal.send(embed=embed)

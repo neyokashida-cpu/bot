@@ -64,6 +64,21 @@ NOME_WEBHOOK = "SONHE — Minecraft"
 TIMEOUT_INVENTARIO_SEGUNDOS = 10.0
 TIMEOUT_HEARTBEAT_SEGUNDOS = 90  # sem heartbeat novo nesse intervalo = considera servidor offline/dormindo
 
+# Sorteada como imagem grande (banner) no aviso de entrada — a thumbnail
+# continua sendo a skin/avatar do jogador (ver _handler_transicao_jogador).
+IMAGENS_ENTROU = [
+    "https://cdn.discordapp.com/attachments/1533795653812093020/1538955167863414834/"
+    "aza5.png?ex=6a848f30&is=6a833db0&hm=20a56a1e499051eaef174e0d951a147887cdd3c3b4166c1f5e01be32a3c33f48&",
+    "https://cdn.discordapp.com/attachments/1533795653812093020/1538955168232767518/"
+    "aza4.png?ex=6a848f30&is=6a833db0&hm=2ded526920d9baed9e64685796516a49641a3e697ed90efbbcf3d8e5f7123267&",
+    "https://cdn.discordapp.com/attachments/1533795653812093020/1538955168530301068/"
+    "aza3.png?ex=6a848f30&is=6a833db0&hm=763a73663eb145015389b9bfc7f821cfe877504593cde1529775e8ad896aa65b&",
+    "https://cdn.discordapp.com/attachments/1533795653812093020/1538955168937414746/"
+    "aza2.png?ex=6a848f30&is=6a833db0&hm=b5625813780bb0e4afa812593aa01ef3e0c956c9e2114cf8eb90142593c28349&",
+    "https://cdn.discordapp.com/attachments/1533795653812093020/1538955169323159624/"
+    "aza.png?ex=6a848f30&is=6a833db0&hm=4aafd56ff1abf85d34f719cb18ab35519bfd7ccc9f7750a1d34d12fcc17ace08&",
+]
+
 MENSAGENS_ENTROU = [
     "{jogador} atravessou a passagem e chegou ao SONHE.",
     "{jogador} acordou dentro do sonho.",
@@ -255,12 +270,14 @@ class Bridge(commands.Cog):
         return web.json_response({"ok": True})
 
     async def _handler_minecraft_entrou(self, request: web.Request):
-        return await self._handler_transicao_jogador(request, MENSAGENS_ENTROU, cor=0x57A64A)
+        return await self._handler_transicao_jogador(request, MENSAGENS_ENTROU, cor=0x57A64A, imagens=IMAGENS_ENTROU)
 
     async def _handler_minecraft_saiu(self, request: web.Request):
         return await self._handler_transicao_jogador(request, MENSAGENS_SAIU, cor=0x8A8A8A)
 
-    async def _handler_transicao_jogador(self, request: web.Request, modelos: list[str], cor: int):
+    async def _handler_transicao_jogador(
+        self, request: web.Request, modelos: list[str], cor: int, imagens: list[str] | None = None
+    ):
         try:
             dados = await request.json()
             jogador = str(dados["jogador"])[:32]
@@ -274,6 +291,8 @@ class Bridge(commands.Cog):
         texto = random.choice(modelos).format(jogador=f"**{jogador}**")
         embed = discord.Embed(description=texto, color=cor)
         embed.set_thumbnail(url=await self._resolver_avatar(jogador))
+        if imagens:
+            embed.set_image(url=random.choice(imagens))
         embed.set_footer(text="Projeto Sonhe • Created by Team ANÚBIS.")
         try:
             await canal.send(embed=embed)
