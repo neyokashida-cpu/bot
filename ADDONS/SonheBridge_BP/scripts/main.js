@@ -49,15 +49,17 @@ function garantirObjetivos() {
 }
 system.run(garantirObjetivos);
 
-const overworld = world.getDimension("overworld");
-
 // Rank/tag são definidos por NOME (não por Entity online) porque o /vincular
 // pode acontecer com o jogador momentaneamente fora do mundo, e porque
 // scoreboard players set funciona por nome mesmo offline (cria uma entrada
 // "fantasma" que passa a valer quando o jogador reconectar).
+// world.getDimension() é chamado aqui dentro (não no topo do arquivo) porque
+// esse arquivo roda em "early execution" no load do pack, e a API nativa
+// ainda não está liberada nesse momento (gera ReferenceError e derruba o
+// script inteiro, cancelando todos os subscribes abaixo).
 function definirScorePorNome(objetivo, nomeJogador, valor) {
     const nomeSeguro = nomeJogador.replace(/"/g, "");
-    return overworld.runCommandAsync(`scoreboard players set "${nomeSeguro}" ${objetivo} ${valor}`);
+    return world.getDimension("overworld").runCommandAsync(`scoreboard players set "${nomeSeguro}" ${objetivo} ${valor}`);
 }
 
 // Cobre as causas mais comuns em survival. Qualquer causa fora dessa lista

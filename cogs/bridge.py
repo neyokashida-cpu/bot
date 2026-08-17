@@ -247,8 +247,10 @@ class Bridge(commands.Cog):
         if canal is None:
             return web.json_response({"erro": "canal do Discord indisponível"}, status=503)
 
-        texto = random.choice(modelos).format(jogador=jogador)
+        texto = random.choice(modelos).format(jogador=f"**{jogador}**")
         embed = discord.Embed(description=texto, color=cor)
+        embed.set_thumbnail(url=await self._resolver_avatar(jogador))
+        embed.set_footer(text="Projeto Sonhe • Created by Team ANÚBIS.")
         try:
             await canal.send(embed=embed)
         except discord.HTTPException:

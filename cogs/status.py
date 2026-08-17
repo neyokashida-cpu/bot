@@ -37,15 +37,17 @@ async def consultar_status() -> dict | None:
     if not config.MINECRAFT_SERVER_ADDRESS:
         return None
     try:
-        servidor = BedrockServer.lookup(f"{config.MINECRAFT_SERVER_ADDRESS}:{config.MINECRAFT_SERVER_PORT}")
+        servidor = BedrockServer.lookup(
+            f"{config.MINECRAFT_SERVER_ADDRESS}:{config.MINECRAFT_SERVER_PORT}", timeout=8
+        )
         resposta = await servidor.async_status()
         return {
             "atual": resposta.players.online,
             "maximo": resposta.players.max,
             "versao": resposta.version.name,
         }
-    except Exception:
-        log.info("Servidor Minecraft não respondeu ao ping (offline, dormindo ou endereço errado).")
+    except Exception as e:
+        log.info(f"Servidor Minecraft não respondeu ao ping ({type(e).__name__}: {e}).")
         return None
 
 
@@ -158,9 +160,18 @@ class Status(commands.Cog):
         if canal is None:
             return
         if online_agora:
-            embed = discord.Embed(description="🟢 O servidor do SONHE está online.", color=0x57A64A)
+            embed = discord.Embed(
+                title="🚪 A Primeira Passagem abriu",
+                description="O servidor do SONHE está online. Bora explorar! 🟢",
+                color=0x57A64A,
+            )
         else:
-            embed = discord.Embed(description="🔴 O servidor do SONHE saiu do ar.", color=0x8A8A8A)
+            embed = discord.Embed(
+                title="🚪 A Primeira Passagem fechou",
+                description="O servidor do SONHE saiu do ar. Volta mais tarde. 🔴",
+                color=0x8A8A8A,
+            )
+        embed.set_footer(text="Projeto Sonhe • Created by Team ANÚBIS.")
         try:
             await canal.send(embed=embed)
         except discord.HTTPException:
