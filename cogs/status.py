@@ -1,8 +1,12 @@
 """
 SONHE — Status do servidor Minecraft (Bedrock, Aternos)
-Ping externo via mcstatus (protocolo RakNet/Unconnected Ping-Pong) — roda
-inteiramente do lado do bot Discord, sem depender de nada dentro do jogo
-(sem @minecraft/server-net, sem RCON, sem acesso a arquivo do Aternos).
+Fonte principal: heartbeat do SonheBridge_BP (cogs/bridge.py), mandado por
+HTTP de dentro do jogo — canal comprovadamente confiável (mesmo usado por
+/minecraft-entrou e /discord-queue). Fallback: ping externo via mcstatus
+(protocolo RakNet/Unconnected Ping-Pong), usado só se o heartbeat nunca
+chegou (ex: addon antigo, ou bridge acabou de subir). O ping externo por
+UDP costuma dar timeout dependendo da rede de saída do host do bot — por
+isso não é mais a fonte primária.
 
 Mantém o embed fixo de #passagem (config.CHANNEL_PASSAGEM_ID) atualizado,
 reaproveitando exatamente o mesmo formato/identidade visual já publicado
@@ -32,8 +36,14 @@ THUMBNAIL_PASSAGEM = (
 )
 
 
-async def consultar_status() -> dict | None:
+async def consultar_status(bot: commands.Bot) -> dict | None:
     """dict com status, ou None se offline/não configurado/sem resposta (Aternos dorme quando vazio)."""
+    bridge = bot.get_cog("Bridge")
+    if bridge is not None:
+        info = bridge.status_via_heartbeat()
+        if info is not None:
+            return info
+
     if not config.MINECRAFT_SERVER_ADDRESS:
         return None
     try:
@@ -86,7 +96,7 @@ def _embed_passagem(status: dict | None) -> discord.Embed:
             f"{SEPARADOR}\n\n"
             "📋 Informações\n\n"
             "Plataforma: Minecraft Bedrock\n"
-            f"Versão: {status['versao']}\n"
+            f"Versão: {status.get('versao') or '—'}\n"
             "Estado: Aberto\n\n"
             f"{SEPARADOR}\n\n"
             "Copie o endereço e a porta exatamente como estão acima."
@@ -112,7 +122,7 @@ class Status(commands.Cog):
     @app_commands.command(name="status", description="Mostra se o servidor Minecraft do SONHE está online.")
     async def status(self, interaction: discord.Interaction):
         await interaction.response.defer()
-        await interaction.followup.send(embed=_embed_passagem(await consultar_status()))
+        await interaction.followup.send(embed=_embed_passagem(await consultar_status(self.bot)))
 
     @tasks.loop(minutes=5)
     async def atualizar_passagem(self):
@@ -120,7 +130,7 @@ class Status(commands.Cog):
         if canal is None:
             return
 
-        status = await consultar_status()
+        status = await consultar_status(self.bot)
 
         await self._avisar_transicao(status is not None)
 

@@ -299,3 +299,20 @@ system.runInterval(() => {
     if (world.getAllPlayers().length === 0) return; // ninguém pra ver, poupa requisição
     buscarFilaDoDiscord();
 }, INTERVALO_POLLING_TICKS);
+
+// Heartbeat — avisa o bridge que o mundo está de pé (mesmo vazio). O bot não
+// consegue confiar num ping UDP externo (rede do host do bot pode bloquear/
+// atrasar RakNet), então é o jogo que avisa "continuo vivo" por HTTP, canal
+// já comprovadamente estável (mesmo usado pelo polling acima).
+const INTERVALO_HEARTBEAT_TICKS = 400; // 400 ticks ≈ 20s
+
+async function enviarHeartbeat() {
+    try {
+        await chamarBridge("/minecraft-heartbeat", { jogadores: world.getAllPlayers().map((p) => p.name) });
+    } catch (erro) {
+        console.warn(`[SonheBridge] falha ao enviar heartbeat: ${erro}`);
+    }
+}
+
+system.run(enviarHeartbeat); // primeiro heartbeat assim que o pack carrega, sem esperar os 20s
+system.runInterval(enviarHeartbeat, INTERVALO_HEARTBEAT_TICKS);

@@ -45,6 +45,7 @@ import asyncio
 import logging
 import os
 import random
+import time
 import uuid
 from collections import deque
 
@@ -61,6 +62,7 @@ log = logging.getLogger("sonhe")
 TAMANHO_MAX_FILA = 100  # evita crescer sem limite se o Minecraft ficar offline
 NOME_WEBHOOK = "SONHE — Minecraft"
 TIMEOUT_INVENTARIO_SEGUNDOS = 10.0
+TIMEOUT_HEARTBEAT_SEGUNDOS = 90  # sem heartbeat novo nesse intervalo = considera servidor offline/dormindo
 
 MENSAGENS_ENTROU = [
     "{jogador} atravessou a passagem e chegou ao SONHE.",
@@ -101,6 +103,8 @@ class Bridge(commands.Cog):
         self._pedidos_inventario: dict[str, asyncio.Future] = {}
         self._runner: web.AppRunner | None = None
         self._webhooks_cache: dict[int, discord.Webhook] = {}
+        self._heartbeat_ts: float | None = None
+        self._jogadores_online: list[str] = []
 
     # ── ciclo de vida do cog ────────────────────────────────
     async def cog_load(self):
@@ -109,6 +113,7 @@ class Bridge(commands.Cog):
         app.router.add_post("/minecraft-morte", self._handler_minecraft_morte)
         app.router.add_post("/minecraft-entrou", self._handler_minecraft_entrou)
         app.router.add_post("/minecraft-saiu", self._handler_minecraft_saiu)
+        app.router.add_post("/minecraft-heartbeat", self._handler_minecraft_heartbeat)
         app.router.add_post("/minecraft-vincular-solicitar", self._handler_vincular_solicitar)
         app.router.add_post("/minecraft-inventario-resposta", self._handler_inventario_resposta)
         app.router.add_get("/discord-queue", self._handler_discord_queue)
@@ -228,6 +233,25 @@ class Bridge(commands.Cog):
             log.exception("Bridge: falha ao enviar mensagem de morte pro Discord.")
             return web.json_response({"erro": "falha ao enviar"}, status=502)
 
+        return web.json_response({"ok": True})
+
+    def status_via_heartbeat(self) -> dict | None:
+        """Usado por cogs/status.py — None se nunca recebeu heartbeat ou se o último expirou."""
+        if self._heartbeat_ts is None:
+            return None
+        if time.monotonic() - self._heartbeat_ts > TIMEOUT_HEARTBEAT_SEGUNDOS:
+            return None
+        return {"atual": len(self._jogadores_online), "maximo": config.MINECRAFT_MAX_JOGADORES, "versao": None}
+
+    async def _handler_minecraft_heartbeat(self, request: web.Request):
+        try:
+            dados = await request.json()
+            jogadores = [str(nome)[:32] for nome in dados.get("jogadores", [])]
+        except (ValueError, TypeError):
+            return web.json_response({"erro": "corpo inválido — esperado {jogadores: [...]}"}, status=400)
+
+        self._heartbeat_ts = time.monotonic()
+        self._jogadores_online = jogadores
         return web.json_response({"ok": True})
 
     async def _handler_minecraft_entrou(self, request: web.Request):

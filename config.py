@@ -26,6 +26,7 @@ GUILD_ID = 1533795652600070174  # ID do servidor Discord do SONHE
 # no painel do Aternos sempre que o servidor for reiniciado do zero.
 MINECRAFT_SERVER_ADDRESS = "plus-09.bedhosting.com.br"
 MINECRAFT_SERVER_PORT = 20110
+MINECRAFT_MAX_JOGADORES = 25  # mesmo valor do MAX_JOGADORES em ADDONS/SonheChat_BP/scripts/main.js
 
 # ── Canais · Despertar ─────────────────────────────────
 CHANNEL_DESPERTAR_ID = 1533798154036580453        # 👋・despertar
