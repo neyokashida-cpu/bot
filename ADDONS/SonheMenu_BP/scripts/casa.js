@@ -1,4 +1,4 @@
-import { world } from "@minecraft/server";
+import { world, system, MolangVariableMap } from "@minecraft/server";
 import { adicionarEntrada } from "./diario.js";
 
 // SONHE — sistema de Home: apenas UMA casa por jogador, guardada como JSON
@@ -95,5 +95,71 @@ export function temCasaDefinida(jogador) {
     } catch (erro) {
         console.warn(`[SonheMenu] temCasaDefinida falhou pra ${jogador?.name}: ${erro}`);
         return false;
+    }
+}
+
+function aguardarTicks(ticks) {
+    return new Promise((resolver) => {
+        system.runTimeout(() => resolver(), ticks);
+    });
+}
+
+// Canalização de 3s antes de voltar pra Home — contagem na actionbar + som,
+// cancela se o jogador tomar dano nesse meio-tempo, e mostra partículas
+// brancas no destino (só depois do teleporte de verdade, via irParaCasa —
+// essa função não é modificada, só chamada no final). APIs confirmadas por
+// pesquisa antes de usar: system.runTimeout/clearRun, world.afterEvents.
+// entityHurt (propriedade hurtEntity), player.onScreenDisplay.setActionBar,
+// player.playSound, Dimension.spawnParticle + MolangVariableMap.
+export async function irParaCasaComEfeito(jogador) {
+    const TICKS_POR_SEGUNDO = 20;
+    const SEGUNDOS_CANALIZACAO = 3;
+    let interrompido = false;
+
+    const assinaturaDano = world.afterEvents.entityHurt.subscribe((evento) => {
+        if (evento.hurtEntity === jogador) interrompido = true;
+    });
+
+    try {
+        for (let segundosRestantes = SEGUNDOS_CANALIZACAO; segundosRestantes > 0; segundosRestantes--) {
+            try {
+                jogador.onScreenDisplay.setActionBar(`Voltando para casa em ${segundosRestantes}...`);
+                jogador.playSound("entity.experience_orb.pickup");
+            } catch (erroUi) {
+                console.warn(`[SonheMenu] falha ao atualizar canalização de Home pra ${jogador?.name}: ${erroUi}`);
+            }
+            await aguardarTicks(TICKS_POR_SEGUNDO);
+            if (interrompido) break;
+        }
+
+        if (interrompido) {
+            try {
+                jogador.onScreenDisplay.setActionBar("Canalização interrompida — você tomou dano.");
+            } catch {
+                // jogador pode ter desconectado — sem problema, só não mostra o aviso
+            }
+            return { sucesso: false, motivo: "interrompido" };
+        }
+
+        const resultado = irParaCasa(jogador);
+
+        if (resultado && resultado.sucesso) {
+            try {
+                const cores = new MolangVariableMap();
+                cores.setColorRGB("variable.color", { red: 1, green: 1, blue: 1 });
+                jogador.dimension.spawnParticle("minecraft:colored_flame_particle", jogador.location, cores);
+            } catch (erroParticula) {
+                console.warn(`[SonheMenu] falha ao mostrar partícula de chegada em casa pra ${jogador?.name}: ${erroParticula}`);
+            }
+        }
+
+        return resultado;
+    } catch (erro) {
+        console.warn(`[SonheMenu] irParaCasaComEfeito falhou pra ${jogador?.name}: ${erro}`);
+        return { sucesso: false, motivo: "erro" };
+    } finally {
+        // Garante que o listener nunca fica pendurado, mesmo se algo acima
+        // lançar (ex: jogador desconectou no meio da canalização).
+        world.afterEvents.entityHurt.unsubscribe(assinaturaDano);
     }
 }

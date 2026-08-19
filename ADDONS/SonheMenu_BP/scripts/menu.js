@@ -1,18 +1,17 @@
 import { world } from "@minecraft/server";
 import { ActionFormData } from "@minecraft/server-ui";
-import { definirCasa, irParaCasa, temCasaDefinida } from "./casa.js";
+import { definirCasa, irParaCasaComEfeito, temCasaDefinida } from "./casa.js";
 import { obterEstatisticas } from "./estatisticas.js";
 import { obterConquistas, abrirConquistas } from "./conquistas.js";
 import { obterEntradas, formatarEntrada } from "./diario.js";
 import { dicaAtivada, alternarDica, dicaAleatoria } from "./configuracoes.js";
 import { resumoInventario } from "./inventario_resumo.js";
+import { abrirAuctionHouse } from "./auction.js";
 
 // SONHE — núcleo do /menu.
-// Casa/Status/Conquistas/Diário/Configurações/Inventário/Perfil já usam
-// dados reais (dynamic properties e scoreboard — ver módulos importados
-// acima). A Auction House é a única exceção: continua placeholder porque
-// envolve dinheiro real de jogador e precisa de arquitetura aprovada
-// antes de qualquer código de transação (ver AUCTION_HOUSE.md).
+// Casa/Status/Conquistas/Diário/Configurações/Inventário/Perfil/Auction
+// House já usam dados reais (dynamic properties, scoreboard, e — só a AH —
+// a Bridge HTTP pra mover Statz de verdade; ver AUCTION_HOUSE.md).
 //
 // Sem emoji Unicode normal no texto dos forms: a fonte do Bedrock não
 // renderiza a maioria deles. O único glyph decorativo usado é o Minecoin
@@ -82,19 +81,7 @@ const PAGINAS = [
     { id: "casa", texto: "Minha Casa", icone: ICONE_CASA, aoAbrir: abrirCasa },
     { id: "perfil", texto: "Meu Perfil", icone: ICONE_PLACEHOLDER, aoAbrir: abrirPerfil },
     { id: "status", texto: "Status", icone: ICONE_PLACEHOLDER, aoAbrir: abrirStatus },
-    {
-        id: "auction",
-        texto: "Auction House",
-        icone: ICONE_PLACEHOLDER,
-        aoAbrir: (jogador) =>
-            abrirPaginaSecundaria(
-                jogador,
-                "Auction House",
-                "A Auction House do SONHE ainda está sendo preparada.\n\n" +
-                    "Envolve dinheiro real de jogador — a arquitetura de segurança " +
-                    "precisa ser aprovada antes de qualquer transação entrar em produção."
-            ),
-    },
+    { id: "auction", texto: "Auction House", icone: ICONE_PLACEHOLDER, aoAbrir: abrirAuctionHouse },
     { id: "inventario", texto: "Inventário", icone: ICONE_PLACEHOLDER, aoAbrir: abrirInventario },
     { id: "conquistas", texto: "Conquistas", icone: ICONE_PLACEHOLDER, aoAbrir: abrirConquistas },
     { id: "diario", texto: "Diário", icone: ICONE_PLACEHOLDER, aoAbrir: abrirDiario },
@@ -189,8 +176,8 @@ async function abrirCasa(jogador) {
     let indice = resposta.selection;
     if (definida) {
         if (indice === 0) {
-            const resultado = irParaCasa(jogador);
-            if (!resultado.sucesso) {
+            const resultado = await irParaCasaComEfeito(jogador);
+            if (!resultado.sucesso && resultado.motivo !== "interrompido") {
                 jogador.sendMessage("Não consegui te levar até sua casa agora. Tenta de novo em alguns segundos.");
             }
             return;
@@ -244,9 +231,9 @@ async function abrirConfiguracoes(jogador) {
 }
 
 // Usada pelas páginas secundárias que só mostram texto (Perfil, Status,
-// Diário, Inventário, Auction House placeholder) — evita várias funções
-// quase idênticas. "Voltar" reabre o menu principal; "Fechar" só deixa o
-// form fechado (sem ação extra).
+// Diário, Inventário) — evita várias funções quase idênticas. "Voltar"
+// reabre o menu principal; "Fechar" só deixa o form fechado (sem ação
+// extra). A Auction House tem seu próprio fluxo em auction.js.
 async function abrirPaginaSecundaria(jogador, titulo, corpo) {
     const form = new ActionFormData()
         .title(titulo)
