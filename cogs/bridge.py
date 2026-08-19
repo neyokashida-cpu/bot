@@ -295,9 +295,8 @@ class Bridge(commands.Cog):
 
         texto = random.choice(modelos).format(jogador=f"**{jogador}**")
         embed = discord.Embed(description=texto, color=cor)
-        embed.set_thumbnail(url=await self._resolver_avatar(jogador))
         if imagens:
-            embed.set_image(url=random.choice(imagens))
+            embed.set_thumbnail(url=random.choice(imagens))
         embed.set_footer(text="Projeto Sonhe • Created by Team ANÚBIS.")
         try:
             await canal.send(embed=embed)
