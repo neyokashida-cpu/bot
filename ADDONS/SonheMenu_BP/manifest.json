@@ -1,0 +1,30 @@
+{
+    "format_version": 2,
+    "header": {
+        "name": "SONHE Menu",
+        "description": "Central de navegação do jogador (/sonhe:menu, fallback !menu) — fundação extensível pra Perfil, Status, Auction House e outros sistemas futuros.",
+        "uuid": "1a5f3c14-84be-473f-b2c5-c0023a262a1f",
+        "version": [1, 0, 0],
+        "min_engine_version": [1, 21, 50]
+    },
+    "modules": [
+        {
+            "description": "Script do menu central do SONHE",
+            "type": "script",
+            "language": "javascript",
+            "uuid": "52b04eb9-3f53-472d-9bcd-3a73e3a20c0b",
+            "entry": "scripts/main.js",
+            "version": [1, 0, 0]
+        }
+    ],
+    "dependencies": [
+        {
+            "module_name": "@minecraft/server",
+            "version": "2.10.0-beta"
+        },
+        {
+            "module_name": "@minecraft/server-ui",
+            "version": "2.2.0-beta"
+        }
+    ]
+}

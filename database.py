@@ -49,6 +49,34 @@ CREATE TABLE IF NOT EXISTS estado (
     chave TEXT PRIMARY KEY,
     valor TEXT NOT NULL
 );
+
+-- Auction House — ver AUCTION_HOUSE.md pra arquitetura completa. O ITEM em
+-- si nunca é guardado aqui (fica em dynamic properties do mundo, no lado
+-- Minecraft) — essas duas tabelas só espelham preço/status do anúncio e
+-- garantem que dinheiro (Statz) só se move uma vez por transactionId.
+CREATE TABLE IF NOT EXISTS ah_anuncios (
+    listing_id          TEXT PRIMARY KEY,
+    vendedor_discord_id TEXT NOT NULL,
+    vendedor_nome_mc    TEXT NOT NULL,
+    preco               INTEGER NOT NULL,
+    status              TEXT NOT NULL DEFAULT 'ATIVO',
+    criado_em           TEXT NOT NULL,
+    expira_em           TEXT NOT NULL,
+    finalizado_em       TEXT
+);
+
+-- transaction_id é a chave de idempotência: uma compra só é processada (só
+-- move Statz) a primeira vez que esse transactionId aparece aqui — um
+-- retry com o mesmo id nunca duplica débito/crédito (ver
+-- confirmar_compra_ah).
+CREATE TABLE IF NOT EXISTS ah_transacoes (
+    transaction_id       TEXT PRIMARY KEY,
+    listing_id           TEXT NOT NULL,
+    comprador_discord_id TEXT NOT NULL,
+    vendedor_discord_id  TEXT NOT NULL,
+    valor                INTEGER NOT NULL,
+    criado_em            TEXT NOT NULL
+);
 """
 
 
@@ -308,3 +336,114 @@ async def obter_vinculo_confirmado_por_nome(nome_minecraft: str) -> dict | None:
         )
         linha = await cursor.fetchone()
         return dict(linha) if linha else None
+
+
+# ── Auction House ────────────────────────────────────────────
+# Ver AUCTION_HOUSE.md pra arquitetura completa. Regra dura: o item nunca
+# passa por aqui (fica em dynamic properties do mundo, no addon) — essas
+# funções só movem Statz e controlam o status do anúncio (ATIVO/VENDIDO/
+# CANCELADO/EXPIRADO). cogs/bridge.py é quem chama isso, nunca o addon
+# direto.
+
+
+async def criar_anuncio_ah(listing_id: str, vendedor_user_id: int, vendedor_nome_mc: str, preco: int, expira_em: str):
+    agora = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    async with aiosqlite.connect(CAMINHO_DB) as db:
+        await db.execute(
+            "INSERT INTO ah_anuncios (listing_id, vendedor_discord_id, vendedor_nome_mc, preco, "
+            "status, criado_em, expira_em) VALUES (?, ?, ?, ?, 'ATIVO', ?, ?)",
+            (listing_id, str(vendedor_user_id), vendedor_nome_mc, preco, agora, expira_em),
+        )
+        await db.commit()
+
+
+async def cancelar_anuncio_ah(listing_id: str, vendedor_user_id: int) -> bool:
+    """Só cancela se o anúncio existir, ainda estiver ATIVO e pertencer a esse vendedor."""
+    agora = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    async with aiosqlite.connect(CAMINHO_DB) as db:
+        cursor = await db.execute(
+            "UPDATE ah_anuncios SET status = 'CANCELADO', finalizado_em = ? "
+            "WHERE listing_id = ? AND vendedor_discord_id = ? AND status = 'ATIVO'",
+            (agora, listing_id, str(vendedor_user_id)),
+        )
+        await db.commit()
+        return cursor.rowcount > 0
+
+
+async def expirar_anuncio_ah(listing_id: str) -> bool:
+    """Chamado pela rotina periódica do addon — só marca EXPIRADO se ainda estiver ATIVO."""
+    agora = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    async with aiosqlite.connect(CAMINHO_DB) as db:
+        cursor = await db.execute(
+            "UPDATE ah_anuncios SET status = 'EXPIRADO', finalizado_em = ? "
+            "WHERE listing_id = ? AND status = 'ATIVO'",
+            (agora, listing_id),
+        )
+        await db.commit()
+        return cursor.rowcount > 0
+
+
+async def confirmar_compra_ah(transaction_id: str, listing_id: str, comprador_user_id: int) -> dict:
+    """Compra atômica e idempotente — nunca move Statz duas vezes pro mesmo transaction_id.
+
+    Retorna {"status": "ok", "preco": int, "vendedor_nome_mc": str} em sucesso (inclusive num
+    retry idempotente), ou {"status": "<motivo>"} sem tocar em Statz/status quando falha:
+    "anuncio_indisponivel" (não existe), "ja_vendido" (outro comprador ganhou a corrida),
+    "comprador_e_vendedor", "saldo_insuficiente".
+    """
+    async with aiosqlite.connect(CAMINHO_DB) as db:
+        db.row_factory = aiosqlite.Row
+
+        cursor = await db.execute("SELECT * FROM ah_anuncios WHERE listing_id = ?", (listing_id,))
+        anuncio = await cursor.fetchone()
+        if anuncio is None:
+            return {"status": "anuncio_indisponivel"}
+
+        # Idempotência: só existe uma linha em ah_transacoes pra esse transaction_id se a compra
+        # JÁ foi concluída antes — um retry (rede, reconexão) repete a mesma resposta de sucesso
+        # sem debitar/creditar de novo.
+        cursor = await db.execute(
+            "SELECT valor FROM ah_transacoes WHERE transaction_id = ?", (transaction_id,)
+        )
+        ja_concluida = await cursor.fetchone()
+        if ja_concluida is not None:
+            return {"status": "ok", "preco": ja_concluida["valor"], "vendedor_nome_mc": anuncio["vendedor_nome_mc"]}
+
+        if anuncio["status"] != "ATIVO":
+            return {"status": "anuncio_indisponivel"}
+
+        if str(anuncio["vendedor_discord_id"]) == str(comprador_user_id):
+            return {"status": "comprador_e_vendedor"}
+
+        # Ganha a corrida quem conseguir essa UPDATE (afeta 0 ou 1 linha) — dois compradores
+        # simultâneos nunca vendem o mesmo anúncio duas vezes.
+        agora = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        cursor = await db.execute(
+            "UPDATE ah_anuncios SET status = 'VENDIDO', finalizado_em = ? "
+            "WHERE listing_id = ? AND status = 'ATIVO'",
+            (agora, listing_id),
+        )
+        if cursor.rowcount == 0:
+            await db.rollback()
+            return {"status": "ja_vendido"}
+
+        preco = anuncio["preco"]
+        await _garantir_perfil(db, comprador_user_id)
+        cursor = await db.execute("SELECT statz FROM perfis WHERE user_id = ?", (comprador_user_id,))
+        linha_comprador = await cursor.fetchone()
+        if linha_comprador["statz"] < preco:
+            await db.rollback()  # desfaz o status='VENDIDO' de cima — o anúncio volta a ficar ATIVO
+            return {"status": "saldo_insuficiente"}
+
+        vendedor_user_id = int(anuncio["vendedor_discord_id"])
+        await db.execute("UPDATE perfis SET statz = statz - ? WHERE user_id = ?", (preco, comprador_user_id))
+        await _garantir_perfil(db, vendedor_user_id)
+        await db.execute("UPDATE perfis SET statz = statz + ? WHERE user_id = ?", (preco, vendedor_user_id))
+        await db.execute(
+            "INSERT INTO ah_transacoes "
+            "(transaction_id, listing_id, comprador_discord_id, vendedor_discord_id, valor, criado_em) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (transaction_id, listing_id, str(comprador_user_id), str(vendedor_user_id), preco, agora),
+        )
+        await db.commit()
+        return {"status": "ok", "preco": preco, "vendedor_nome_mc": anuncio["vendedor_nome_mc"]}

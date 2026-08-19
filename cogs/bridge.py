@@ -42,6 +42,7 @@ simplesmente não recebe nenhum POST — não quebra nada.
 """
 
 import asyncio
+import datetime
 import logging
 import os
 import random
@@ -131,6 +132,10 @@ class Bridge(commands.Cog):
         app.router.add_post("/minecraft-heartbeat", self._handler_minecraft_heartbeat)
         app.router.add_post("/minecraft-vincular-solicitar", self._handler_vincular_solicitar)
         app.router.add_post("/minecraft-inventario-resposta", self._handler_inventario_resposta)
+        app.router.add_post("/ah/anuncio-criar", self._handler_ah_anuncio_criar)
+        app.router.add_post("/ah/anuncio-cancelar", self._handler_ah_anuncio_cancelar)
+        app.router.add_post("/ah/anuncio-expirar", self._handler_ah_anuncio_expirar)
+        app.router.add_post("/ah/comprar-confirmar", self._handler_ah_comprar_confirmar)
         app.router.add_get("/discord-queue", self._handler_discord_queue)
         app.router.add_get("/health", self._handler_health)
 
@@ -330,6 +335,78 @@ class Bridge(commands.Cog):
         else:
             futuro.set_result({"itens": dados.get("itens", [])})
         return web.json_response({"ok": True})
+
+    # ── Auction House ──────────────────────────────────────────
+    # Ver AUCTION_HOUSE.md pra arquitetura completa. Regra dura: preço e
+    # status oficiais do anúncio SEMPRE vêm daqui (nunca do que o addon
+    # manda) — o addon só guarda o item em si (escrow), nunca decide preço
+    # nem confirma pagamento por conta própria.
+
+    async def _handler_ah_anuncio_criar(self, request: web.Request):
+        try:
+            dados = await request.json()
+            listing_id = str(dados["listingId"])[:64]
+            vendedor_nome = str(dados["vendedorNome"])[:32]
+            preco = int(dados["preco"])
+            expira_em_ms = int(dados["expiraEm"])
+        except (ValueError, KeyError, TypeError):
+            return web.json_response(
+                {"erro": "corpo inválido — esperado {listingId, vendedorNome, preco, expiraEm}"}, status=400
+            )
+
+        if preco <= 0:
+            return web.json_response({"status": "preco_invalido"})
+
+        vinculo = await database.obter_vinculo_confirmado_por_nome(vendedor_nome)
+        if vinculo is None:
+            return web.json_response({"status": "sem_vinculo"})
+
+        expira_em = datetime.datetime.fromtimestamp(expira_em_ms / 1000, tz=datetime.timezone.utc).isoformat()
+        await database.criar_anuncio_ah(listing_id, vinculo["user_id"], vendedor_nome, preco, expira_em)
+        return web.json_response({"status": "ok"})
+
+    async def _handler_ah_anuncio_cancelar(self, request: web.Request):
+        try:
+            dados = await request.json()
+            listing_id = str(dados["listingId"])[:64]
+            vendedor_nome = str(dados["vendedorNome"])[:32]
+        except (ValueError, KeyError, TypeError):
+            return web.json_response({"erro": "corpo inválido — esperado {listingId, vendedorNome}"}, status=400)
+
+        vinculo = await database.obter_vinculo_confirmado_por_nome(vendedor_nome)
+        if vinculo is None:
+            return web.json_response({"status": "sem_vinculo"})
+
+        cancelado = await database.cancelar_anuncio_ah(listing_id, vinculo["user_id"])
+        return web.json_response({"status": "ok" if cancelado else "nao_encontrado"})
+
+    async def _handler_ah_anuncio_expirar(self, request: web.Request):
+        try:
+            dados = await request.json()
+            listing_id = str(dados["listingId"])[:64]
+        except (ValueError, KeyError, TypeError):
+            return web.json_response({"erro": "corpo inválido — esperado {listingId}"}, status=400)
+
+        expirado = await database.expirar_anuncio_ah(listing_id)
+        return web.json_response({"status": "ok" if expirado else "nao_encontrado"})
+
+    async def _handler_ah_comprar_confirmar(self, request: web.Request):
+        try:
+            dados = await request.json()
+            transaction_id = str(dados["transactionId"])[:64]
+            listing_id = str(dados["listingId"])[:64]
+            comprador_nome = str(dados["compradorNome"])[:32]
+        except (ValueError, KeyError, TypeError):
+            return web.json_response(
+                {"erro": "corpo inválido — esperado {transactionId, listingId, compradorNome}"}, status=400
+            )
+
+        vinculo = await database.obter_vinculo_confirmado_por_nome(comprador_nome)
+        if vinculo is None:
+            return web.json_response({"status": "comprador_sem_vinculo"})
+
+        resultado = await database.confirmar_compra_ah(transaction_id, listing_id, vinculo["user_id"])
+        return web.json_response(resultado)
 
     async def _handler_discord_queue(self, request: web.Request):
         mensagens = list(self.fila_para_minecraft)
