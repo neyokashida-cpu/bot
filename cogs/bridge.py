@@ -136,6 +136,7 @@ class Bridge(commands.Cog):
         app.router.add_post("/ah/anuncio-cancelar", self._handler_ah_anuncio_cancelar)
         app.router.add_post("/ah/anuncio-expirar", self._handler_ah_anuncio_expirar)
         app.router.add_post("/ah/comprar-confirmar", self._handler_ah_comprar_confirmar)
+        app.router.add_post("/ah/anuncios-status", self._handler_ah_anuncios_status)
         app.router.add_get("/discord-queue", self._handler_discord_queue)
         app.router.add_get("/health", self._handler_health)
 
@@ -196,6 +197,22 @@ class Bridge(commands.Cog):
         if canal is None:
             log.warning("Bridge: CHANNEL_CHAT_MINE_ID não resolveu — ID errado ou bot ainda não conectou?")
         return canal
+
+    def _eh_administracao(self, autor: discord.abc.User) -> bool:
+        """Mesmo critério de cargo staff usado em cogs/vinculacao.py (/admin)."""
+        guild = self.bot.get_guild(config.GUILD_ID)
+        if guild is None:
+            return False
+        membro = guild.get_member(autor.id)
+        if membro is None:
+            return False
+        cargos_staff = {
+            config.ROLE_ANUBIS_DONO_ID,
+            config.ROLE_DIRECAO_ID,
+            config.ROLE_GUARDA_ID,
+            config.ROLE_RECEPCAO_ID,
+        }
+        return any(cargo.id in cargos_staff for cargo in membro.roles)
 
     # ── handlers ─────────────────────────────────────────────
     async def _handler_health(self, request: web.Request):
@@ -354,14 +371,17 @@ class Bridge(commands.Cog):
             )
 
         if preco <= 0:
+            log.info(f"AH: anuncio-criar rejeitado (preco_invalido) listing={listing_id} vendedor={vendedor_nome}")
             return web.json_response({"status": "preco_invalido"})
 
         vinculo = await database.obter_vinculo_confirmado_por_nome(vendedor_nome)
         if vinculo is None:
+            log.info(f"AH: anuncio-criar rejeitado (sem_vinculo) listing={listing_id} vendedor={vendedor_nome}")
             return web.json_response({"status": "sem_vinculo"})
 
         expira_em = datetime.datetime.fromtimestamp(expira_em_ms / 1000, tz=datetime.timezone.utc).isoformat()
         await database.criar_anuncio_ah(listing_id, vinculo["user_id"], vendedor_nome, preco, expira_em)
+        log.info(f"AH: anuncio-criar ok listing={listing_id} vendedor={vendedor_nome} preco={preco}")
         return web.json_response({"status": "ok"})
 
     async def _handler_ah_anuncio_cancelar(self, request: web.Request):
@@ -374,9 +394,11 @@ class Bridge(commands.Cog):
 
         vinculo = await database.obter_vinculo_confirmado_por_nome(vendedor_nome)
         if vinculo is None:
+            log.info(f"AH: anuncio-cancelar rejeitado (sem_vinculo) listing={listing_id} vendedor={vendedor_nome}")
             return web.json_response({"status": "sem_vinculo"})
 
         cancelado = await database.cancelar_anuncio_ah(listing_id, vinculo["user_id"])
+        log.info(f"AH: anuncio-cancelar listing={listing_id} vendedor={vendedor_nome} resultado={'ok' if cancelado else 'nao_encontrado'}")
         return web.json_response({"status": "ok" if cancelado else "nao_encontrado"})
 
     async def _handler_ah_anuncio_expirar(self, request: web.Request):
@@ -387,7 +409,21 @@ class Bridge(commands.Cog):
             return web.json_response({"erro": "corpo inválido — esperado {listingId}"}, status=400)
 
         expirado = await database.expirar_anuncio_ah(listing_id)
+        log.info(f"AH: anuncio-expirar listing={listing_id} resultado={'ok' if expirado else 'nao_encontrado'}")
         return web.json_response({"status": "ok" if expirado else "nao_encontrado"})
+
+    async def _handler_ah_anuncios_status(self, request: web.Request):
+        """Reconciliação periódica do addon: devolve o status atual (segundo o banco, fonte
+        de verdade) de cada listing_id pedido, pra ele resolver localmente o que ficou
+        pendente (venda/cancelamento/expiração que o Minecraft não chegou a processar)."""
+        try:
+            dados = await request.json()
+            listing_ids = [str(item)[:64] for item in dados.get("listingIds", [])][:500]
+        except (ValueError, TypeError):
+            return web.json_response({"erro": "corpo inválido — esperado {listingIds: [...]}"}, status=400)
+
+        resultado = await database.obter_status_anuncios_ah(listing_ids)
+        return web.json_response({"anuncios": resultado})
 
     async def _handler_ah_comprar_confirmar(self, request: web.Request):
         try:
@@ -402,9 +438,14 @@ class Bridge(commands.Cog):
 
         vinculo = await database.obter_vinculo_confirmado_por_nome(comprador_nome)
         if vinculo is None:
+            log.info(f"AH: comprar-confirmar rejeitado (comprador_sem_vinculo) listing={listing_id} comprador={comprador_nome}")
             return web.json_response({"status": "comprador_sem_vinculo"})
 
         resultado = await database.confirmar_compra_ah(transaction_id, listing_id, vinculo["user_id"])
+        log.info(
+            f"AH: comprar-confirmar listing={listing_id} comprador={comprador_nome} "
+            f"tx={transaction_id} resultado={resultado.get('status')}"
+        )
         return web.json_response(resultado)
 
     async def _handler_discord_queue(self, request: web.Request):
@@ -494,6 +535,57 @@ class Bridge(commands.Cog):
 
         embed.set_footer(text="Projeto Sonhe • Created by Team ANÚBIS.")
         return embed
+
+    # ── Auction House · comandos de staff ─────────────────────
+    # A devolução do item ao vendedor não precisa de caminho novo: o addon
+    # reconcilia sozinho contra /ah/anuncios-status no próximo ciclo (~60s)
+    # e detecta que o status não é mais ATIVO.
+    @app_commands.command(name="ah-listar", description="[Staff] Lista os anúncios ativos na Auction House.")
+    async def ah_listar(self, interaction: discord.Interaction):
+        if not self._eh_administracao(interaction.user):
+            await interaction.response.send_message("Sem permissão.", ephemeral=True)
+            return
+
+        anuncios = await database.listar_anuncios_ativos_ah()
+        if not anuncios:
+            await interaction.response.send_message("Nenhum anúncio ativo agora.", ephemeral=True)
+            return
+
+        linhas = [
+            f"`{a['listing_id']}` — {a['vendedor_nome_mc']} — {a['preco']} Statz — expira {a['expira_em']}"
+            for a in anuncios[:25]
+        ]
+        embed = discord.Embed(
+            title="🏪 Auction House — anúncios ativos",
+            description="\n".join(linhas)[:4000],
+            color=config.COR_DREAMCORE,
+        )
+        if len(anuncios) > 25:
+            embed.set_footer(text=f"Mostrando 25 de {len(anuncios)} anúncios ativos.")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @app_commands.command(
+        name="ah-forcar-cancelar", description="[Staff] Cancela à força um anúncio problemático da Auction House."
+    )
+    @app_commands.describe(listing_id="ID do anúncio (ver /ah-listar)")
+    async def ah_forcar_cancelar(self, interaction: discord.Interaction, listing_id: str):
+        if not self._eh_administracao(interaction.user):
+            await interaction.response.send_message("Sem permissão.", ephemeral=True)
+            return
+
+        cancelado = await database.forcar_cancelar_anuncio_ah(listing_id)
+        if not cancelado:
+            await interaction.response.send_message(
+                "Não achei esse anúncio ativo (já vendido, cancelado, expirado, ou ID errado).", ephemeral=True
+            )
+            return
+
+        log.info(f"AH: anuncio-forcar-cancelar por staff={interaction.user.id} listing={listing_id}")
+        await interaction.response.send_message(
+            f"Anúncio `{listing_id}` cancelado. O item volta pro vendedor automaticamente em até ~60s "
+            "(reconciliação do addon).",
+            ephemeral=True,
+        )
 
 
 async def setup(bot: commands.Bot):

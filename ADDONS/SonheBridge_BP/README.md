@@ -32,8 +32,18 @@ estiver liberado no seu host, só esse pack fica sem efeito — o SonheChat
   inventário/equipamento do jogador (se ele estiver online agora) no próximo
   ciclo de polling e responde. Sempre somente leitura — não existe nenhum
   comando aqui que altere item, moeda ou inventário do jogador.
-- A cada ~3 segundos (se houver jogador online), busca mensagens novas do
-  Discord (`GET /discord-queue`) e mostra no chat do jogo.
+- A cada ~3 segundos (só se houver jogador online — com o mundo vazio o
+  polling pausa pra poupar requisição), busca mensagens novas do Discord
+  (`GET /discord-queue`) e mostra no chat do jogo. Um ciclo nunca começa
+  antes do anterior terminar; falhas seguidas (bot fora do ar, rede
+  instável) fazem o polling espaçar as tentativas em vez de martelar no
+  mesmo ritmo — volta ao ritmo normal no primeiro sucesso.
+- A cada ~20 segundos, envia um heartbeat (`POST /minecraft-heartbeat`) com
+  a lista de jogadores online — é assim que o bot sabe que o mundo está de
+  pé, já que ele não consegue confiar num ping UDP externo pra esse host.
+- `!vincular` tem cooldown de 60s por jogador, e cada mensagem de chat
+  retransmitida pro Discord tem um throttle de ~1.5s por jogador — protege
+  contra flood sem precisar de endpoint em lote.
 - Se o bot estiver fora do ar ou o módulo não estiver habilitado, os erros
   ficam só no console do servidor — o jogo continua normal, sem travar.
 

@@ -20,6 +20,21 @@ const BRIDGE_SECRET = "COLE_AQUI_O_MESMO_VALOR_DA_VARIAVEL_BRIDGE_SECRET_DO_RAIL
 // ══════════════════════════════════════════════════════════
 
 const INTERVALO_POLLING_TICKS = 60; // 60 ticks ≈ 3s (20 ticks/s) — puxa mensagens/pedidos novos do Discord
+const MAX_CICLOS_BACKOFF = 10; // teto de ciclos extras de espera após falhas seguidas do polling
+
+const DEBUG = false; // liga o log de diagnóstico do chatSend (linha ~333) — deixa false em produção
+
+// Cooldown genérico em memória, por "chave" (ex.: nome do jogador). Usado
+// pelo !vincular (60s) e pelo throttle de chat->Discord (~1.5s) — protege
+// contra flood sem precisar mudar o contrato HTTP com o bot.
+const timestampsCooldown = new Map();
+function dentroDoCooldown(chave, janelaMs) {
+    const agora = Date.now();
+    const ultimo = timestampsCooldown.get(chave);
+    if (ultimo !== undefined && agora - ultimo < janelaMs) return true;
+    timestampsCooldown.set(chave, agora);
+    return false;
+}
 
 const OBJ_RANK = "sonhe_rank"; // mesmo objetivo de scoreboard que o SonheChat_BP usa
 const OBJ_TAG = "sonhe_tag";
@@ -248,52 +263,71 @@ async function solicitarVinculo(jogador) {
 }
 
 // Lê o inventário + equipamento de um jogador ONLINE e responde pro bot.
+// Invariante de Bridge: toda requisição sempre responde — por isso o corpo
+// inteiro fica num try/catch que, em qualquer erro inesperado (não só
+// jogador offline), ainda manda uma resposta de erro em vez de deixar o
+// pedido pendurado sem resposta pro sempre do lado do Discord.
 async function responderPedidoInventario(pedido) {
-    const jogador = world.getAllPlayers().find((p) => p.name === pedido.jogador);
-    if (!jogador) {
-        await chamarBridge("/minecraft-inventario-resposta", {
-            id: pedido.id,
-            erro: "jogador offline no momento",
-        }).catch(() => {});
-        return;
-    }
-
-    const itens = [];
-    const inventario = jogador.getComponent("minecraft:inventory");
-    const container = inventario?.container;
-    if (container) {
-        for (let slot = 0; slot < container.size; slot++) {
-            const stack = container.getItem(slot);
-            if (stack) itens.push({ secao: "Inventário", nome: formatarNomeItem(stack.typeId), quantidade: stack.amount });
+    try {
+        const jogador = world.getAllPlayers().find((p) => p.name === pedido.jogador);
+        if (!jogador) {
+            await chamarBridge("/minecraft-inventario-resposta", {
+                id: pedido.id,
+                erro: "jogador offline no momento",
+            });
+            return;
         }
-    }
 
-    const equipavel = jogador.getComponent("minecraft:equippable");
-    const slotsEquipados = [
-        [EquipmentSlot.Head, "Capacete"],
-        [EquipmentSlot.Chest, "Peitoral"],
-        [EquipmentSlot.Legs, "Calça"],
-        [EquipmentSlot.Feet, "Botas"],
-        [EquipmentSlot.Offhand, "Mão secundária"],
-    ];
-    for (const [slot, rotulo] of slotsEquipados) {
-        const stack = equipavel?.getEquipment(slot);
-        if (stack) itens.push({ secao: "Equipado", nome: `${rotulo}: ${formatarNomeItem(stack.typeId)}`, quantidade: stack.amount });
-    }
+        const itens = [];
+        const inventario = jogador.getComponent("minecraft:inventory");
+        const container = inventario?.container;
+        if (container) {
+            for (let slot = 0; slot < container.size; slot++) {
+                const stack = container.getItem(slot);
+                if (stack) itens.push({ secao: "Inventário", nome: formatarNomeItem(stack.typeId), quantidade: stack.amount });
+            }
+        }
 
-    await chamarBridge("/minecraft-inventario-resposta", { id: pedido.id, itens }).catch((erro) => {
+        const equipavel = jogador.getComponent("minecraft:equippable");
+        const slotsEquipados = [
+            [EquipmentSlot.Head, "Capacete"],
+            [EquipmentSlot.Chest, "Peitoral"],
+            [EquipmentSlot.Legs, "Calça"],
+            [EquipmentSlot.Feet, "Botas"],
+            [EquipmentSlot.Offhand, "Mão secundária"],
+        ];
+        for (const [slot, rotulo] of slotsEquipados) {
+            const stack = equipavel?.getEquipment(slot);
+            if (stack) itens.push({ secao: "Equipado", nome: `${rotulo}: ${formatarNomeItem(stack.typeId)}`, quantidade: stack.amount });
+        }
+
+        await chamarBridge("/minecraft-inventario-resposta", { id: pedido.id, itens });
+    } catch (erro) {
         console.warn(`[SonheBridge] falha ao responder pedido de inventário: ${erro}`);
-    });
+        await chamarBridge("/minecraft-inventario-resposta", { id: pedido.id, erro: "erro interno no Minecraft" }).catch(() => {});
+    }
 }
 
+// Estado do polling (invariante de Bridge: nunca se sobrepõe a si mesmo, e
+// falhas seguidas reduzem a frequência das tentativas em vez de martelar
+// sempre no mesmo ritmo).
+let pollingEmAndamento = false;
+let falhasSeguidasPolling = 0;
+let ciclosParaPular = 0;
+
 async function buscarFilaDoDiscord() {
+    if (pollingEmAndamento) return; // ciclo anterior ainda não terminou — nunca roda em paralelo com ele mesmo
+    pollingEmAndamento = true;
     try {
         const req = new HttpRequest(`${BRIDGE_URL}/discord-queue`);
         req.method = HttpRequestMethod.Get;
         req.headers = [new HttpHeader("Authorization", `Bearer ${BRIDGE_SECRET}`)];
         req.timeout = 5;
         const resposta = await http.request(req);
-        if (resposta.status !== 200) return;
+        if (resposta.status !== 200) {
+            registrarFalhaPolling();
+            return;
+        }
 
         const dados = JSON.parse(resposta.body);
         for (const item of dados.mensagens ?? []) {
@@ -307,9 +341,18 @@ async function buscarFilaDoDiscord() {
                 world.sendMessage(`§9[Discord] §f${item.autor}§7: §f${item.mensagem}`);
             }
         }
+        falhasSeguidasPolling = 0; // sucesso: zera o backoff
     } catch (erro) {
         console.warn(`[SonheBridge] falha ao buscar mensagens do Discord: ${erro}`);
+        registrarFalhaPolling();
+    } finally {
+        pollingEmAndamento = false;
     }
+}
+
+function registrarFalhaPolling() {
+    falhasSeguidasPolling++;
+    ciclosParaPular = Math.min(falhasSeguidasPolling, MAX_CICLOS_BACKOFF);
 }
 
 // Minecraft -> Discord (chat) + comando !vincular
@@ -317,19 +360,29 @@ async function buscarFilaDoDiscord() {
 // Esse pack só observa e retransmite, exceto "!vincular", que é interceptado
 // (nunca aparece no chat do jogo — ver também o filtro de "!" no SonheChat_BP).
 world.beforeEvents.chatSend.subscribe((evento) => {
-    // Log de diagnóstico: se isso não aparecer no console ao mandar uma
-    // mensagem, o SonheChat_BP (que cancela o evento antes) está impedindo
-    // esse handler de rodar — nesse caso a ordem dos packs no mundo precisa
-    // trocar (SonheBridge_BP antes do SonheChat_BP).
-    console.warn(`[SonheBridge] chatSend recebido de ${evento.sender.name}: "${evento.message}"`);
+    if (DEBUG) {
+        // Log de diagnóstico: se isso não aparecer no console ao mandar uma
+        // mensagem, o SonheChat_BP (que cancela o evento antes) está impedindo
+        // esse handler de rodar — nesse caso a ordem dos packs no mundo precisa
+        // trocar (SonheBridge_BP antes do SonheChat_BP).
+        console.warn(`[SonheBridge] chatSend recebido de ${evento.sender.name}: "${evento.message}"`);
+    }
 
     const mensagem = evento.message.trim();
     if (mensagem.toLowerCase() === "!vincular") {
         evento.cancel = true;
         const jogador = evento.sender;
+        if (dentroDoCooldown(`vincular:${jogador.name}`, 60_000)) {
+            jogador.sendMessage("§cAguarde um pouco antes de gerar um novo código de vinculação.");
+            return;
+        }
         system.run(() => solicitarVinculo(jogador));
         return;
     }
+
+    // Throttle simples por jogador — evita floodar a fila do Discord sem
+    // precisar de endpoint em lote nem mudar o contrato HTTP existente.
+    if (dentroDoCooldown(`chat:${evento.sender.name}`, 1_500)) return;
 
     const nomeJogador = evento.sender.name;
     const tag = obterTag(evento.sender);
@@ -338,11 +391,15 @@ world.beforeEvents.chatSend.subscribe((evento) => {
 
 // Minecraft -> Discord (mortes)
 world.afterEvents.entityDie.subscribe((evento) => {
-    if (evento.deadEntity.typeId !== "minecraft:player") return; // só mortes de jogador interessam aqui
-    const nomeVitima = evento.deadEntity.name ?? evento.deadEntity.nameTag ?? "Alguém";
-    const causa = evento.damageSource?.cause;
-    const quemMatou = evento.damageSource?.damagingEntity;
-    system.run(() => enviarMorteParaDiscord(mensagemMorte(nomeVitima, causa, quemMatou)));
+    try {
+        if (evento.deadEntity.typeId !== "minecraft:player") return; // só mortes de jogador interessam aqui
+        const nomeVitima = evento.deadEntity.name ?? evento.deadEntity.nameTag ?? "Alguém";
+        const causa = evento.damageSource?.cause;
+        const quemMatou = evento.damageSource?.damagingEntity;
+        system.run(() => enviarMorteParaDiscord(mensagemMorte(nomeVitima, causa, quemMatou)));
+    } catch (erro) {
+        console.warn(`[SonheBridge] erro no listener entityDie: ${erro}`);
+    }
 });
 
 // Minecraft -> Discord (entrada/saída no mundo)
@@ -360,6 +417,10 @@ world.afterEvents.playerLeave.subscribe((evento) => {
 // puxar (polling) em vez de esperar o Discord avisar.
 system.runInterval(() => {
     if (world.getAllPlayers().length === 0) return; // ninguém pra ver, poupa requisição
+    if (ciclosParaPular > 0) {
+        ciclosParaPular--; // backoff: pula ciclos extras após falhas seguidas, em vez de martelar no mesmo ritmo
+        return;
+    }
     buscarFilaDoDiscord();
 }, INTERVALO_POLLING_TICKS);
 

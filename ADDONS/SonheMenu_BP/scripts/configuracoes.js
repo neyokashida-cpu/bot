@@ -1,8 +1,15 @@
+import { obterComPadrao, salvarDadosJogador } from "./dados_jogador.js";
+
 // SONHE — preferências genéricas por jogador: um único JSON guardado numa
 // dynamic property ("sonhe:prefs"), sem rede e sem banco externo. Outros
 // módulos (menu.js) leem/gravam chaves individuais via obterPreferencia /
 // definirPreferencia; dicaAtivada/alternarDica são açúcar pra chave
 // "dicaAoAbrirMenu", o único toggle real deste arquivo.
+//
+// Leitura/escrita passa por dados_jogador.js: um erro de leitura pontual
+// nunca é tratado como "sem preferências salvas" — nesse caso
+// definirPreferencia aborta em vez de regravar {} por cima do que já
+// existia.
 
 const PROP_PREFS = "sonhe:prefs";
 const CHAVE_DICA = "dicaAoAbrirMenu";
@@ -20,41 +27,14 @@ export const DICAS = [
     "Nem toda passagem se abre na primeira tentativa.",
 ];
 
-// Lê a dynamic property e devolve sempre um objeto válido: jogador novo,
-// propriedade vazia ou JSON corrompido caem no fallback {} em vez de
-// propagar erro pra quem chamou.
-function lerPrefs(jogador) {
-    let bruto;
-    try {
-        bruto = jogador.getDynamicProperty(PROP_PREFS);
-    } catch (erro) {
-        console.warn(`[SonheMenu] falha ao ler ${PROP_PREFS} de ${jogador?.name}: ${erro}`);
-        return {};
-    }
-
-    if (typeof bruto !== "string" || bruto.length === 0) return {};
-
-    try {
-        const dados = JSON.parse(bruto);
-        return dados && typeof dados === "object" && !Array.isArray(dados) ? dados : {};
-    } catch (erro) {
-        console.warn(`[SonheMenu] JSON inválido em ${PROP_PREFS} de ${jogador?.name}, resetando: ${erro}`);
-        return {};
-    }
-}
-
-function salvarPrefs(jogador, prefs) {
-    try {
-        jogador.setDynamicProperty(PROP_PREFS, JSON.stringify(prefs));
-    } catch (erro) {
-        console.warn(`[SonheMenu] falha ao salvar ${PROP_PREFS} de ${jogador?.name}: ${erro}`);
-    }
+function validarPrefs(dados) {
+    return dados && typeof dados === "object" && !Array.isArray(dados) ? dados : null;
 }
 
 // Nunca lança: qualquer falha devolve "padrao" em vez de travar quem chamou.
 export function obterPreferencia(jogador, chave, padrao) {
     try {
-        const prefs = lerPrefs(jogador);
+        const { dados: prefs } = obterComPadrao(jogador, PROP_PREFS, validarPrefs, () => ({}));
         return chave in prefs ? prefs[chave] : padrao;
     } catch (erro) {
         console.warn(`[SonheMenu] obterPreferencia("${chave}") falhou pra ${jogador?.name}: ${erro}`);
@@ -64,9 +44,13 @@ export function obterPreferencia(jogador, chave, padrao) {
 
 export function definirPreferencia(jogador, chave, valor) {
     try {
-        const prefs = lerPrefs(jogador);
+        const { dados: prefs, seguroSalvar } = obterComPadrao(jogador, PROP_PREFS, validarPrefs, () => ({}));
+        if (!seguroSalvar) {
+            console.warn(`[SonheMenu] pulando gravação da preferência "${chave}" pra ${jogador?.name} — leitura anterior falhou, não regravo por cima.`);
+            return;
+        }
         prefs[chave] = valor;
-        salvarPrefs(jogador, prefs);
+        salvarDadosJogador(jogador, PROP_PREFS, prefs);
     } catch (erro) {
         console.warn(`[SonheMenu] definirPreferencia("${chave}") falhou pra ${jogador?.name}: ${erro}`);
     }

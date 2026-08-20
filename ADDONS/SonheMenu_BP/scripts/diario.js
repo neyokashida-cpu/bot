@@ -1,44 +1,22 @@
 import { world } from "@minecraft/server";
+import { obterComPadrao, salvarDadosJogador } from "./dados_jogador.js";
 
 // SONHE — diário do jogador: registro cronológico de eventos, guardado
 // como JSON numa única dynamic property por jogador (sem rede, sem banco
 // externo). Outros módulos (menu.js) consomem via obterEntradas() e
 // formatarEntrada() pra exibir; o timestamp cru (quando) só é convertido
 // pra texto legível na hora de exibir, nunca antes de salvar.
+//
+// Leitura/escrita passa por dados_jogador.js: um erro de leitura pontual
+// nunca é tratado como "diário vazio" — nesse caso adicionarEntrada aborta
+// em vez de regravar um array vazio por cima do histórico real.
 
 const PROP_DIARIO = "sonhe:diario";
 const PROP_FLAG_PRIMEIRA_ENTRADA = "sonhe:diario_entrada_registrada";
 const MAX_ENTRADAS = 30;
 
-// Lê a dynamic property e devolve sempre um array válido: jogador novo,
-// propriedade vazia ou JSON corrompido caem no fallback [] em vez de
-// propagar erro pra quem chamou.
-function lerEntradas(jogador) {
-    let bruto;
-    try {
-        bruto = jogador.getDynamicProperty(PROP_DIARIO);
-    } catch (erro) {
-        console.warn(`[SonheMenu] falha ao ler ${PROP_DIARIO} de ${jogador?.name}: ${erro}`);
-        return [];
-    }
-
-    if (typeof bruto !== "string" || bruto.length === 0) return [];
-
-    try {
-        const dados = JSON.parse(bruto);
-        return Array.isArray(dados) ? dados : [];
-    } catch (erro) {
-        console.warn(`[SonheMenu] JSON inválido em ${PROP_DIARIO} de ${jogador?.name}, resetando: ${erro}`);
-        return [];
-    }
-}
-
-function salvarEntradas(jogador, entradas) {
-    try {
-        jogador.setDynamicProperty(PROP_DIARIO, JSON.stringify(entradas));
-    } catch (erro) {
-        console.warn(`[SonheMenu] falha ao salvar ${PROP_DIARIO} de ${jogador?.name}: ${erro}`);
-    }
+function validarEntradas(dados) {
+    return Array.isArray(dados) ? dados : null;
 }
 
 // Acrescenta uma entrada nova e corta as mais antigas, mantendo só as
@@ -46,19 +24,25 @@ function salvarEntradas(jogador, entradas) {
 // (Date.now()) — formatar isso é trabalho de formatarEntrada, não daqui.
 export function adicionarEntrada(jogador, texto) {
     try {
-        const entradas = lerEntradas(jogador);
+        const { dados: entradas, seguroSalvar } = obterComPadrao(jogador, PROP_DIARIO, validarEntradas, () => []);
+        if (!seguroSalvar) {
+            console.warn(`[SonheMenu] pulando nova entrada de diário pra ${jogador?.name} — leitura anterior falhou, não regravo por cima.`);
+            return;
+        }
         entradas.push({ texto: String(texto ?? ""), quando: Date.now() });
         const recortadas = entradas.length > MAX_ENTRADAS ? entradas.slice(-MAX_ENTRADAS) : entradas;
-        salvarEntradas(jogador, recortadas);
+        salvarDadosJogador(jogador, PROP_DIARIO, recortadas);
     } catch (erro) {
         console.warn(`[SonheMenu] adicionarEntrada falhou pra ${jogador?.name}: ${erro}`);
     }
 }
 
-// Nunca retorna null/undefined — jogador sem histórico recebe array vazio.
+// Nunca retorna null/undefined — jogador sem histórico (ou leitura com
+// erro) recebe array vazio, só pra exibição.
 export function obterEntradas(jogador) {
     try {
-        return lerEntradas(jogador);
+        const { dados } = obterComPadrao(jogador, PROP_DIARIO, validarEntradas, () => []);
+        return dados;
     } catch (erro) {
         console.warn(`[SonheMenu] obterEntradas falhou pra ${jogador?.name}: ${erro}`);
         return [];
@@ -89,9 +73,11 @@ export function formatarEntrada(entrada) {
     }
 }
 
-// Grava a entrada de "primeira chegada" só uma vez por jogador. A flag
-// separada (em vez de checar entradas.length === 0) garante idempotência
-// mesmo se o jogador apagar/zerar o diário depois.
+// Grava a entrada de "primeira chegada" só uma vez por jogador. A flag é
+// um boolean cru (não passa por dados_jogador.js, que é só pra JSON) —
+// ausência/false é indistinguível de "ainda não registrado", o que é
+// exatamente o comportamento desejado aqui (idempotência mesmo se o
+// jogador apagar/zerar o diário depois).
 function registrarChegadaSeNecessario(jogador) {
     try {
         const jaRegistrado = jogador.getDynamicProperty(PROP_FLAG_PRIMEIRA_ENTRADA);

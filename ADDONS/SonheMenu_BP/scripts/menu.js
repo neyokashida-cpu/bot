@@ -164,20 +164,16 @@ async function abrirCasa(jogador) {
     form.button("Voltar", ICONE_PLACEHOLDER);
     form.button("Fechar", ICONE_PLACEHOLDER);
 
-    let resposta;
-    try {
-        resposta = await form.show(jogador);
-    } catch (erro) {
-        console.warn(`[SonheMenu] falha ao abrir Minha Casa pra ${jogador.name}: ${erro}`);
-        return;
-    }
-    if (resposta.canceled || resposta.selection === undefined) return;
+    const resposta = await mostrarForm(jogador, form, "Minha Casa");
+    if (!resposta) return;
 
     let indice = resposta.selection;
     if (definida) {
         if (indice === 0) {
             const resultado = await irParaCasaComEfeito(jogador);
-            if (!resultado.sucesso && resultado.motivo !== "interrompido") {
+            if (!resultado.sucesso && resultado.motivo === "ja_em_canalizacao") {
+                jogador.sendMessage("Você já está sendo levado para casa — aguarde.");
+            } else if (!resultado.sucesso && resultado.motivo !== "interrompido") {
                 jogador.sendMessage("Não consegui te levar até sua casa agora. Tenta de novo em alguns segundos.");
             }
             return;
@@ -211,14 +207,8 @@ async function abrirConfiguracoes(jogador) {
         .button("Voltar", ICONE_PLACEHOLDER)
         .button("Fechar", ICONE_PLACEHOLDER);
 
-    let resposta;
-    try {
-        resposta = await form.show(jogador);
-    } catch (erro) {
-        console.warn(`[SonheMenu] falha ao abrir Configurações pra ${jogador.name}: ${erro}`);
-        return;
-    }
-    if (resposta.canceled || resposta.selection === undefined) return;
+    const resposta = await mostrarForm(jogador, form, "Configurações");
+    if (!resposta) return;
 
     if (resposta.selection === 0) {
         alternarDica(jogador);
@@ -228,6 +218,28 @@ async function abrirConfiguracoes(jogador) {
     if (resposta.selection === 1) {
         await abrirMenuPrincipal(jogador);
     }
+}
+
+// Helper pra formulários com botões dinâmicos (o número/ordem dos botões
+// muda conforme o estado do jogador) — padroniza try/catch + o caso
+// canceled/selection===undefined, e sempre avisa o jogador (best-effort)
+// quando o form falha ao abrir. Retorna a resposta bruta, ou null se
+// cancelado/fechado (silencioso) ou se falhou (já avisou o jogador).
+async function mostrarForm(jogador, form, contexto) {
+    let resposta;
+    try {
+        resposta = await form.show(jogador);
+    } catch (erro) {
+        console.warn(`[SonheMenu] falha ao abrir "${contexto}" pra ${jogador?.name}: ${erro}`);
+        try {
+            jogador.sendMessage("Não consegui abrir esse menu agora. Tenta de novo em alguns segundos.");
+        } catch {
+            // jogador pode ter desconectado — sem problema, só não mostra o aviso
+        }
+        return null;
+    }
+    if (resposta.canceled || resposta.selection === undefined) return null; // fechado pelo X, ou jogador saiu
+    return resposta;
 }
 
 // Usada pelas páginas secundárias que só mostram texto (Perfil, Status,
@@ -241,15 +253,8 @@ async function abrirPaginaSecundaria(jogador, titulo, corpo) {
         .button("Voltar", ICONE_PLACEHOLDER)
         .button("Fechar", ICONE_PLACEHOLDER);
 
-    let resposta;
-    try {
-        resposta = await form.show(jogador);
-    } catch (erro) {
-        console.warn(`[SonheMenu] falha ao abrir "${titulo}" pra ${jogador.name}: ${erro}`);
-        return;
-    }
-
-    if (resposta.canceled || resposta.selection === undefined) return; // fechado pelo X, ou jogador saiu
+    const resposta = await mostrarForm(jogador, form, titulo);
+    if (!resposta) return;
     if (resposta.selection === 0) {
         await abrirMenuPrincipal(jogador);
     }
@@ -266,15 +271,8 @@ export async function abrirMenuPrincipal(jogador) {
     }
     form.button("Fechar", ICONE_PLACEHOLDER);
 
-    let resposta;
-    try {
-        resposta = await form.show(jogador);
-    } catch (erro) {
-        console.warn(`[SonheMenu] falha ao abrir o menu pra ${jogador.name}: ${erro}`);
-        return;
-    }
-
-    if (resposta.canceled || resposta.selection === undefined) return; // fechado pelo X, ou jogador saiu
+    const resposta = await mostrarForm(jogador, form, "Menu SONHE");
+    if (!resposta) return;
     if (resposta.selection >= PAGINAS.length) return; // botão "Fechar"
 
     const pagina = PAGINAS[resposta.selection];

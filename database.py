@@ -77,6 +77,14 @@ CREATE TABLE IF NOT EXISTS ah_transacoes (
     valor                INTEGER NOT NULL,
     criado_em            TEXT NOT NULL
 );
+
+-- Índices pra consulta administrativa (/ah-listar, investigar reclamação)
+-- não virar full scan conforme os anúncios/transações acumulam.
+CREATE INDEX IF NOT EXISTS idx_ah_anuncios_status ON ah_anuncios(status);
+CREATE INDEX IF NOT EXISTS idx_ah_anuncios_vendedor ON ah_anuncios(vendedor_discord_id);
+CREATE INDEX IF NOT EXISTS idx_ah_transacoes_listing ON ah_transacoes(listing_id);
+CREATE INDEX IF NOT EXISTS idx_ah_transacoes_comprador ON ah_transacoes(comprador_discord_id);
+CREATE INDEX IF NOT EXISTS idx_ah_transacoes_vendedor ON ah_transacoes(vendedor_discord_id);
 """
 
 
@@ -370,6 +378,64 @@ async def cancelar_anuncio_ah(listing_id: str, vendedor_user_id: int) -> bool:
         return cursor.rowcount > 0
 
 
+async def forcar_cancelar_anuncio_ah(listing_id: str) -> bool:
+    """Uso administrativo (/ah-forcar-cancelar) — mesma query de cancelar_anuncio_ah, mas sem
+    exigir que seja o vendedor pedindo. A devolução do item ao vendedor acontece sozinha no
+    próximo ciclo de reconciliação do addon (ele detecta que o status não é mais ATIVO)."""
+    agora = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    async with aiosqlite.connect(CAMINHO_DB) as db:
+        cursor = await db.execute(
+            "UPDATE ah_anuncios SET status = 'CANCELADO', finalizado_em = ? "
+            "WHERE listing_id = ? AND status = 'ATIVO'",
+            (agora, listing_id),
+        )
+        await db.commit()
+        return cursor.rowcount > 0
+
+
+async def listar_anuncios_ativos_ah() -> list[dict]:
+    """Uso administrativo (/ah-listar)."""
+    async with aiosqlite.connect(CAMINHO_DB) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT * FROM ah_anuncios WHERE status = 'ATIVO' ORDER BY criado_em ASC"
+        )
+        linhas = await cursor.fetchall()
+        return [dict(linha) for linha in linhas]
+
+
+async def obter_status_anuncios_ah(listing_ids: list[str]) -> dict[str, dict]:
+    """Usado pela reconciliação periódica do addon (POST /ah/anuncios-status) — devolve o
+    status atual de cada listing_id pedido, pra o addon comparar contra o que tem em escrow
+    local e resolver o que ficou pendente (venda/cancelamento/expiração que o Minecraft não
+    chegou a processar por queda de processo/rede). Um listing só tem 1 transação possível
+    (só pode ser vendido uma vez), então o LEFT JOIN nunca duplica linha."""
+    if not listing_ids:
+        return {}
+    async with aiosqlite.connect(CAMINHO_DB) as db:
+        db.row_factory = aiosqlite.Row
+        marcadores = ",".join("?" for _ in listing_ids)
+        cursor = await db.execute(
+            f"""
+            SELECT a.listing_id, a.status, p.minecraft_nome AS comprador_nome_mc
+            FROM ah_anuncios a
+            LEFT JOIN ah_transacoes t ON t.listing_id = a.listing_id
+            LEFT JOIN perfis p ON p.user_id = CAST(t.comprador_discord_id AS INTEGER)
+            WHERE a.listing_id IN ({marcadores})
+            """,
+            listing_ids,
+        )
+        linhas = await cursor.fetchall()
+
+    resultado = {}
+    for linha in linhas:
+        item = {"status": linha["status"]}
+        if linha["status"] == "VENDIDO" and linha["comprador_nome_mc"]:
+            item["compradorNomeMc"] = linha["comprador_nome_mc"]
+        resultado[linha["listing_id"]] = item
+    return resultado
+
+
 async def expirar_anuncio_ah(listing_id: str) -> bool:
     """Chamado pela rotina periódica do addon — só marca EXPIRADO se ainda estiver ATIVO."""
     agora = datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -429,14 +495,21 @@ async def confirmar_compra_ah(transaction_id: str, listing_id: str, comprador_us
 
         preco = anuncio["preco"]
         await _garantir_perfil(db, comprador_user_id)
-        cursor = await db.execute("SELECT statz FROM perfis WHERE user_id = ?", (comprador_user_id,))
-        linha_comprador = await cursor.fetchone()
-        if linha_comprador["statz"] < preco:
+
+        # Débito atômico e condicional — mesmo padrão do UPDATE de status acima (linha 421).
+        # Duas compras concorrentes do MESMO comprador (dois anúncios diferentes, quase ao
+        # mesmo tempo) nunca mais leem um saldo "válido" antes de qualquer commit: a segunda
+        # perde a corrida AQUI (rowcount == 0), nunca no valor que tinha sido lido antes — um
+        # SELECT + checagem em Python separados permitiriam saldo negativo (TOCTOU).
+        cursor = await db.execute(
+            "UPDATE perfis SET statz = statz - ? WHERE user_id = ? AND statz >= ?",
+            (preco, comprador_user_id, preco),
+        )
+        if cursor.rowcount == 0:
             await db.rollback()  # desfaz o status='VENDIDO' de cima — o anúncio volta a ficar ATIVO
             return {"status": "saldo_insuficiente"}
 
         vendedor_user_id = int(anuncio["vendedor_discord_id"])
-        await db.execute("UPDATE perfis SET statz = statz - ? WHERE user_id = ?", (preco, comprador_user_id))
         await _garantir_perfil(db, vendedor_user_id)
         await db.execute("UPDATE perfis SET statz = statz + ? WHERE user_id = ?", (preco, vendedor_user_id))
         await db.execute(

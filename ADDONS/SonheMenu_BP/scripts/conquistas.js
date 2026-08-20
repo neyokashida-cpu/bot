@@ -1,6 +1,7 @@
 import { ActionFormData } from "@minecraft/server-ui";
 import { obterEstatisticas } from "./estatisticas.js";
 import { abrirMenuPrincipal } from "./menu.js";
+import { obterComPadrao, salvarDadosJogador } from "./dados_jogador.js";
 
 // SONHE — conquistas: lista fixa, calculada só a partir das estatísticas
 // reais de estatisticas.js (nada inventado). O progresso desbloqueado é
@@ -51,35 +52,8 @@ const CONQUISTAS = [
     },
 ];
 
-// Lê a dynamic property e devolve sempre um objeto válido: jogador novo,
-// propriedade vazia ou JSON corrompido caem no fallback {} em vez de
-// propagar erro pra quem chamou.
-function lerDesbloqueadas(jogador) {
-    let bruto;
-    try {
-        bruto = jogador.getDynamicProperty(PROP_CONQUISTAS);
-    } catch (erro) {
-        console.warn(`[SonheMenu] falha ao ler ${PROP_CONQUISTAS} de ${jogador?.name}: ${erro}`);
-        return {};
-    }
-
-    if (typeof bruto !== "string" || bruto.length === 0) return {};
-
-    try {
-        const dados = JSON.parse(bruto);
-        return dados && typeof dados === "object" ? dados : {};
-    } catch (erro) {
-        console.warn(`[SonheMenu] JSON inválido em ${PROP_CONQUISTAS} de ${jogador?.name}, resetando: ${erro}`);
-        return {};
-    }
-}
-
-function salvarDesbloqueadas(jogador, desbloqueadas) {
-    try {
-        jogador.setDynamicProperty(PROP_CONQUISTAS, JSON.stringify(desbloqueadas));
-    } catch (erro) {
-        console.warn(`[SonheMenu] falha ao salvar ${PROP_CONQUISTAS} de ${jogador?.name}: ${erro}`);
-    }
+function validarDesbloqueadas(dados) {
+    return dados && typeof dados === "object" && !Array.isArray(dados) ? dados : null;
 }
 
 // Confere cada conquista contra as estatísticas atuais. Quando o critério
@@ -87,10 +61,15 @@ function salvarDesbloqueadas(jogador, desbloqueadas) {
 // momento (idempotente — só grava uma vez, não regrava depois). Quando o
 // critério não passa, a conquista vem sempre como desbloqueada:false, sem
 // timestamp, mesmo que tenha sobrado algo salvo de um estado anterior.
+//
+// Se a leitura anterior deu erro (seguroSalvar=false), a lista ainda é
+// calculada normalmente pra exibição — só a gravação de novos
+// desbloqueios é pulada, pra nunca regravar um objeto vazio por cima do
+// progresso real do jogador.
 export function obterConquistas(jogador) {
     try {
         const stats = obterEstatisticas(jogador);
-        const desbloqueadas = lerDesbloqueadas(jogador);
+        const { dados: desbloqueadas, seguroSalvar } = obterComPadrao(jogador, PROP_CONQUISTAS, validarDesbloqueadas, () => ({}));
         let alterou = false;
 
         const resultado = CONQUISTAS.map((conquista) => {
@@ -113,7 +92,13 @@ export function obterConquistas(jogador) {
             };
         });
 
-        if (alterou) salvarDesbloqueadas(jogador, desbloqueadas);
+        if (alterou) {
+            if (seguroSalvar) {
+                salvarDadosJogador(jogador, PROP_CONQUISTAS, desbloqueadas);
+            } else {
+                console.warn(`[SonheMenu] pulando gravação de conquistas pra ${jogador?.name} — leitura anterior falhou, não regravo por cima.`);
+            }
+        }
         return resultado;
     } catch (erro) {
         console.warn(`[SonheMenu] obterConquistas falhou pra ${jogador?.name}: ${erro}`);
@@ -166,6 +151,11 @@ export async function abrirConquistas(jogador) {
         resposta = await form.show(jogador);
     } catch (erro) {
         console.warn(`[SonheMenu] falha ao abrir Conquistas pra ${jogador?.name}: ${erro}`);
+        try {
+            jogador.sendMessage("Não consegui abrir esse menu agora. Tenta de novo em alguns segundos.");
+        } catch {
+            // jogador pode ter desconectado — sem problema, só não mostra o aviso
+        }
         return;
     }
 

@@ -123,22 +123,38 @@ function removerDoIndice(listingId) {
     salvarIndice(indice);
 }
 
+// Cache em memória dos itens em escrow — "Ver anúncios"/"Minhas vendas"
+// reliam o índice inteiro (potencialmente ~200 itens, o teto recomendado
+// em AUCTION_HOUSE.md) a cada abertura de tela. Nada fora deste arquivo
+// escreve nessas dynamic properties, então o cache é seguro contanto que
+// TODA leitura/escrita passe por lerItemEscrow/salvarItemEscrow/
+// removerItemEscrow (nunca acessar PREFIXO_ITEM direto fora daqui).
+const cacheItens = new Map();
+
 function lerItemEscrow(listingId) {
+    if (cacheItens.has(listingId)) return cacheItens.get(listingId);
     try {
         const bruto = world.getDynamicProperty(`${PREFIXO_ITEM}${listingId}`);
-        if (typeof bruto !== "string" || bruto.length === 0) return null;
-        return JSON.parse(bruto);
+        if (typeof bruto !== "string" || bruto.length === 0) {
+            cacheItens.set(listingId, null);
+            return null;
+        }
+        const dados = JSON.parse(bruto);
+        cacheItens.set(listingId, dados);
+        return dados;
     } catch (erro) {
         console.warn(`[SonheMenu] falha ao ler anúncio ${listingId}: ${erro}`);
-        return null;
+        return null; // não cacheia erro de leitura — tenta de novo na próxima chamada
     }
 }
 
 function salvarItemEscrow(listingId, dados) {
     try {
         world.setDynamicProperty(`${PREFIXO_ITEM}${listingId}`, JSON.stringify(dados));
+        cacheItens.set(listingId, dados);
     } catch (erro) {
         console.warn(`[SonheMenu] falha ao salvar anúncio ${listingId}: ${erro}`);
+        cacheItens.delete(listingId); // não confia no cache se a escrita real falhou
     }
 }
 
@@ -147,6 +163,8 @@ function removerItemEscrow(listingId) {
         world.setDynamicProperty(`${PREFIXO_ITEM}${listingId}`, undefined);
     } catch (erro) {
         console.warn(`[SonheMenu] falha ao remover anúncio ${listingId}: ${erro}`);
+    } finally {
+        cacheItens.delete(listingId);
     }
 }
 
@@ -883,12 +901,20 @@ async function expirarAnuncio(listingId, dados) {
     }
 }
 
+// listingIds cuja chamada /ah/anuncio-expirar ainda não retornou neste
+// ciclo — evita disparar uma segunda chamada HTTP pro mesmo item se o
+// ciclo de 60s seguinte começar antes da resposta da primeira chegar
+// (financeiramente já seguro pelo WHERE status='ATIVO' no banco, isso só
+// evita chamada duplicada/desperdício).
+const expirandoNoMomento = new Set();
+
 function rodarExpiracaoAnuncios() {
     const indice = lerIndice();
     const agora = Date.now();
 
     for (const listingId of indice.ativos) {
         try {
+            if (expirandoNoMomento.has(listingId)) continue;
             const dados = lerItemEscrow(listingId);
             if (!dados) {
                 removerDoIndice(listingId); // escrow inconsistente (índice órfão) — limpa e segue
@@ -896,10 +922,83 @@ function rodarExpiracaoAnuncios() {
             }
             if (dados.expiraEm >= agora) continue;
 
-            expirarAnuncio(listingId, dados); // assíncrona; uma falha aqui não deve travar os outros itens
+            expirandoNoMomento.add(listingId);
+            expirarAnuncio(listingId, dados)
+                .catch((erro) => console.warn(`[SonheMenu] expirarAnuncio ${listingId} rejeitou: ${erro}`))
+                .finally(() => expirandoNoMomento.delete(listingId));
         } catch (erro) {
             console.warn(`[SonheMenu] falha ao processar expiração de ${listingId}: ${erro}`);
         }
+    }
+}
+
+// ── Reconciliação (a Bridge/SQLite é a fonte de verdade do status
+// financeiro; o escrow local só a segue) ─────────────────────
+// Cobre dois casos que a expiração normal não resolve: (1) o processo caiu
+// entre a Bridge confirmar compra/cancelamento/expiração e o Minecraft
+// entregar/remover o escrow correspondente; (2) o retry de compra em
+// confirmarCompra só vale pra mesma sessão — se o jogador desconectar ou o
+// processo cair no meio, nada tenta de novo depois disso. Roda no mesmo
+// ciclo de rodarExpiracaoAnuncios, e também uma vez no load do pack.
+async function reconciliarAnuncios() {
+    const indice = lerIndice();
+    if (indice.ativos.length === 0) return; // nada a reconciliar, poupa a chamada
+
+    let resposta;
+    try {
+        resposta = await chamarBridge("/ah/anuncios-status", { listingIds: indice.ativos });
+    } catch (erro) {
+        console.warn(`[SonheMenu] falha de rede na reconciliação da Auction House: ${erro}`);
+        return;
+    }
+
+    let corpo;
+    try {
+        corpo = JSON.parse(resposta.body);
+    } catch (erro) {
+        console.warn(`[SonheMenu] resposta inválida da Bridge na reconciliação: ${erro}`);
+        return;
+    }
+    if (resposta.status !== 200 || !corpo.anuncios) return;
+
+    for (const [listingId, info] of Object.entries(corpo.anuncios)) {
+        if (info.status === "ATIVO") continue; // nada a resolver
+
+        // Se já não está mais no escrow local, uma entrega anterior (normal ou de uma
+        // reconciliação passada) já resolveu esse item — idempotente, não faz nada de novo.
+        const dados = lerItemEscrow(listingId);
+        if (!dados) continue;
+
+        let destino;
+        if (info.status === "VENDIDO") {
+            if (!info.compradorNomeMc) {
+                // Não deveria acontecer (toda venda tem comprador vinculado) — não entrega
+                // pro vendedor por engano (ele já foi pago) nem some com o item; espera
+                // resolução manual/admin em vez de arriscar duplicar benefício.
+                console.warn(`[SonheMenu] reconciliação: anúncio ${listingId} VENDIDO sem comprador identificado — não resolvido, precisa de admin.`);
+                continue;
+            }
+            destino = info.compradorNomeMc;
+        } else {
+            // CANCELADO ou EXPIRADO — devolve ao vendedor original.
+            destino = dados.vendedorNomeMinecraft;
+        }
+
+        try {
+            const { itemStack, avisos } = reconstituirItemStack(dados.item);
+            entregarOuGuardarNoCorreio(destino, itemStack, dados.item, `reconciliacao_${info.status.toLowerCase()}`);
+            if (avisos.length > 0) {
+                console.warn(`[SonheMenu] reconciliação entregou ${listingId} pra ${destino} com avisos: ${avisos.join(",")}`);
+            }
+        } catch (erro) {
+            // Não remove escrow/índice se a reconstituição falhou — tenta de novo no próximo ciclo.
+            console.warn(`[SonheMenu] falha ao reconciliar entrega do anúncio ${listingId}: ${erro}`);
+            continue;
+        }
+
+        removerItemEscrow(listingId);
+        removerDoIndice(listingId);
+        console.warn(`[SonheMenu] reconciliação resolveu anúncio pendente ${listingId} (status=${info.status}, destino=${destino}).`);
     }
 }
 
@@ -952,9 +1051,21 @@ try {
         } catch (erro) {
             console.warn(`[SonheMenu] falha na rotina de expiração da Auction House: ${erro}`);
         }
+        reconciliarAnuncios().catch((erro) => console.warn(`[SonheMenu] reconciliarAnuncios rejeitou: ${erro}`));
     }, INTERVALO_EXPIRACAO_TICKS);
 } catch (erro) {
     console.warn(`[SonheMenu] não consegui registrar a rotina de expiração da Auction House: ${erro}`);
+}
+
+// Roda a reconciliação também uma vez no load do pack (com um pequeno
+// delay — dá tempo do resto do mundo/rede estabilizar), pra resolver
+// qualquer coisa que ficou pendente enquanto o mundo esteve offline.
+try {
+    system.runTimeout(() => {
+        reconciliarAnuncios().catch((erro) => console.warn(`[SonheMenu] reconciliarAnuncios (load) rejeitou: ${erro}`));
+    }, 200); // ~10s
+} catch (erro) {
+    console.warn(`[SonheMenu] não consegui agendar a reconciliação inicial da Auction House: ${erro}`);
 }
 
 try {

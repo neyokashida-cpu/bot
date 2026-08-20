@@ -14,6 +14,17 @@ import "./estatisticas.js"; // auto-registra os listeners de blocos/mobs/mortes/
 //      se o toggle não estiver ativo neste mundo, essa parte falha sozinha
 //      (capturada abaixo) e o "!menu" continua garantido.
 
+// Debounce em memória, por nome de jogador — evita reabrir o menu várias
+// vezes se o jogador mandar "!menu" repetido rápido (double-tap, flood).
+const ultimoMenuPorJogador = new Map();
+function dentroDoCooldown(nomeJogador, janelaMs) {
+    const agora = Date.now();
+    const ultimo = ultimoMenuPorJogador.get(nomeJogador);
+    if (ultimo !== undefined && agora - ultimo < janelaMs) return true;
+    ultimoMenuPorJogador.set(nomeJogador, agora);
+    return false;
+}
+
 // ── 1) !menu — rede de segurança ────────────────────────────
 // IMPORTANTE: este pack precisa carregar ANTES do SonheChat_BP na ordem do
 // mundo. O SonheChat_BP cancela TODA mensagem de chat incondicionalmente
@@ -24,6 +35,7 @@ world.beforeEvents.chatSend.subscribe((evento) => {
     if (evento.message.trim().toLowerCase() !== "!menu") return;
     evento.cancel = true;
     const jogador = evento.sender;
+    if (dentroDoCooldown(jogador.name, 1_000)) return;
     system.run(() => abrirMenuPrincipal(jogador));
 });
 

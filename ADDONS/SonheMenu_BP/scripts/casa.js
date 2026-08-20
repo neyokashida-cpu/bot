@@ -89,6 +89,11 @@ export function irParaCasa(jogador) {
     }
 }
 
+// Lock de canalização — no máximo uma canalização de Home por jogador ao
+// mesmo tempo, e o lock nunca fica "fantasma": a liberação sempre passa
+// pelo finally em irParaCasaComEfeito, mesmo se algo lançar no meio.
+const emCanalizacao = new Set();
+
 export function temCasaDefinida(jogador) {
     try {
         return lerCasa(jogador) !== null;
@@ -126,69 +131,84 @@ function posicaoNoCirculo(centro, anguloGraus, raio, alturaExtra) {
 // hurtEntity), player.onScreenDisplay.setActionBar, player.playSound,
 // Dimension.spawnParticle + MolangVariableMap.
 export async function irParaCasaComEfeito(jogador) {
-    const DURACAO_SEGUNDOS = 3;
-    const PASSOS_POR_SEGUNDO = 10; // contagem em décimos (3.0, 2.9, 2.8...)
-    const TICKS_POR_PASSO = 2; // 10 passos/s * 2 ticks = 20 ticks/s
-    const TOTAL_PASSOS = DURACAO_SEGUNDOS * PASSOS_POR_SEGUNDO;
-    const RAIO_PARTICULA = 0.6;
-    const GRAUS_POR_PASSO = 40; // velocidade da rotação — ~1 volta a cada 9 passos
-
-    let interrompido = false;
-
-    const assinaturaDano = world.afterEvents.entityHurt.subscribe((evento) => {
-        if (evento.hurtEntity === jogador) interrompido = true;
-    });
-
-    const corBranca = new MolangVariableMap();
-    corBranca.setColorRGB("variable.color", { red: 1, green: 1, blue: 1 });
+    // Segundo pedido enquanto já há uma canalização em curso pra esse
+    // jogador: recusa sem disparar nada em paralelo, em vez de rodar duas
+    // canalizações concorrentes (partículas duplicadas, dois teleportes).
+    if (emCanalizacao.has(jogador.id)) {
+        return { sucesso: false, motivo: "ja_em_canalizacao" };
+    }
+    emCanalizacao.add(jogador.id);
 
     try {
-        let angulo = 0;
-        for (let passo = 0; passo < TOTAL_PASSOS; passo++) {
-            const restante = (DURACAO_SEGUNDOS - passo / PASSOS_POR_SEGUNDO).toFixed(1);
-            try {
-                jogador.onScreenDisplay.setActionBar(`Voltando para casa em ${restante}s`);
-                const posParticula = posicaoNoCirculo(jogador.location, angulo, RAIO_PARTICULA, 1);
-                jogador.dimension.spawnParticle("minecraft:glow_particle", posParticula, corBranca);
-                if (passo % PASSOS_POR_SEGUNDO === 0) {
-                    jogador.playSound("entity.experience_orb.pickup");
+        const DURACAO_SEGUNDOS = 3;
+        const PASSOS_POR_SEGUNDO = 10; // contagem em décimos (3.0, 2.9, 2.8...)
+        const TICKS_POR_PASSO = 2; // 10 passos/s * 2 ticks = 20 ticks/s
+        const TOTAL_PASSOS = DURACAO_SEGUNDOS * PASSOS_POR_SEGUNDO;
+        const RAIO_PARTICULA = 0.6;
+        const GRAUS_POR_PASSO = 40; // velocidade da rotação — ~1 volta a cada 9 passos
+
+        let interrompido = false;
+
+        const assinaturaDano = world.afterEvents.entityHurt.subscribe((evento) => {
+            if (evento.hurtEntity === jogador) interrompido = true;
+        });
+
+        const corBranca = new MolangVariableMap();
+        corBranca.setColorRGB("variable.color", { red: 1, green: 1, blue: 1 });
+
+        try {
+            let angulo = 0;
+            for (let passo = 0; passo < TOTAL_PASSOS; passo++) {
+                const restante = (DURACAO_SEGUNDOS - passo / PASSOS_POR_SEGUNDO).toFixed(1);
+                try {
+                    jogador.onScreenDisplay.setActionBar(`Voltando para casa em ${restante}s`);
+                    const posParticula = posicaoNoCirculo(jogador.location, angulo, RAIO_PARTICULA, 1);
+                    jogador.dimension.spawnParticle("minecraft:glow_particle", posParticula, corBranca);
+                    if (passo % PASSOS_POR_SEGUNDO === 0) {
+                        jogador.playSound("entity.experience_orb.pickup");
+                    }
+                } catch (erroUi) {
+                    console.warn(`[SonheMenu] falha ao atualizar canalização de Home pra ${jogador?.name}: ${erroUi}`);
                 }
-            } catch (erroUi) {
-                console.warn(`[SonheMenu] falha ao atualizar canalização de Home pra ${jogador?.name}: ${erroUi}`);
+                angulo = (angulo + GRAUS_POR_PASSO) % 360;
+                await aguardarTicks(TICKS_POR_PASSO);
+                if (interrompido) break;
             }
-            angulo = (angulo + GRAUS_POR_PASSO) % 360;
-            await aguardarTicks(TICKS_POR_PASSO);
-            if (interrompido) break;
-        }
 
-        if (interrompido) {
-            try {
-                jogador.onScreenDisplay.setActionBar("Canalização interrompida — você tomou dano.");
-            } catch {
-                // jogador pode ter desconectado — sem problema, só não mostra o aviso
+            if (interrompido) {
+                try {
+                    jogador.onScreenDisplay.setActionBar("Canalização interrompida — você tomou dano.");
+                } catch {
+                    // jogador pode ter desconectado — sem problema, só não mostra o aviso
+                }
+                return { sucesso: false, motivo: "interrompido" };
             }
-            return { sucesso: false, motivo: "interrompido" };
-        }
 
-        const resultado = irParaCasa(jogador);
+            const resultado = irParaCasa(jogador);
 
-        if (resultado && resultado.sucesso) {
-            try {
-                const cores = new MolangVariableMap();
-                cores.setColorRGB("variable.color", { red: 1, green: 1, blue: 1 });
-                jogador.dimension.spawnParticle("minecraft:colored_flame_particle", jogador.location, cores);
-            } catch (erroParticula) {
-                console.warn(`[SonheMenu] falha ao mostrar partícula de chegada em casa pra ${jogador?.name}: ${erroParticula}`);
+            if (resultado && resultado.sucesso) {
+                try {
+                    // Testado direto no servidor por comando — confirmado que renderiza,
+                    // diferente das outras que não tinham certeza documentada.
+                    jogador.dimension.spawnParticle("minecraft:totem_particle", jogador.location);
+                } catch (erroParticula) {
+                    console.warn(`[SonheMenu] falha ao mostrar partícula de chegada em casa pra ${jogador?.name}: ${erroParticula}`);
+                }
             }
-        }
 
-        return resultado;
-    } catch (erro) {
-        console.warn(`[SonheMenu] irParaCasaComEfeito falhou pra ${jogador?.name}: ${erro}`);
-        return { sucesso: false, motivo: "erro" };
+            return resultado;
+        } catch (erro) {
+            console.warn(`[SonheMenu] irParaCasaComEfeito falhou pra ${jogador?.name}: ${erro}`);
+            return { sucesso: false, motivo: "erro" };
+        } finally {
+            // Garante que o listener nunca fica pendurado, mesmo se algo acima
+            // lançar (ex: jogador desconectou no meio da canalização).
+            world.afterEvents.entityHurt.unsubscribe(assinaturaDano);
+        }
     } finally {
-        // Garante que o listener nunca fica pendurado, mesmo se algo acima
-        // lançar (ex: jogador desconectou no meio da canalização).
-        world.afterEvents.entityHurt.unsubscribe(assinaturaDano);
+        // Libera o lock em QUALQUER saída da função — sucesso, interrupção
+        // por dano, ou erro inesperado — pra nunca deixar o jogador travado
+        // sem conseguir tentar de novo.
+        emCanalizacao.delete(jogador.id);
     }
 }
