@@ -59,6 +59,15 @@ function formatarNomeItem(typeId) {
         .join(" ");
 }
 
+// Nome mostrado nas telas: o vendedor pode ter dado um nome de exibição
+// próprio pro anúncio ("Espada Sharpness X"), diferente do nameTag real do
+// item (que continua sendo usado se ele reaparecer no inventário/correio).
+// Prioridade: nome de exibição do anúncio > nome real do item (anvil) >
+// nome formatado a partir do typeId.
+function nomeDeExibicao(dados) {
+    return dados.nomeExibicao || dados.item.nameTag || formatarNomeItem(dados.item.typeId);
+}
+
 function formatarTempoRestante(ms) {
     if (ms <= 0) return "expirado";
     const totalMinutos = Math.floor(ms / 60000);
@@ -350,7 +359,7 @@ async function abrirVerAnuncios(jogador, pagina) {
         .body("Escolha um anúncio pra ver os detalhes.");
 
     for (const dados of itensPagina) {
-        const nome = dados.item.nameTag || formatarNomeItem(dados.item.typeId);
+        const nome = nomeDeExibicao(dados);
         const restante = formatarTempoRestante(dados.expiraEm - agora);
         form.button(`${nome}\n${dados.preco} moedas - ${dados.vendedorNomeMinecraft} (${restante})`, ICONE_PLACEHOLDER);
     }
@@ -403,7 +412,7 @@ async function abrirDetalheAnuncio(jogador, listingId, paginaOrigem) {
         return;
     }
 
-    const nome = dados.item.nameTag || formatarNomeItem(dados.item.typeId);
+    const nome = nomeDeExibicao(dados);
     const linhas = [
         `Item: ${nome}`,
         `Quantidade: ${dados.item.amount}`,
@@ -545,10 +554,12 @@ async function abrirAnunciarItem(jogador) {
     const slot = jogador.selectedSlotIndex;
     const assinaturaOriginal = assinaturaItem(item);
 
+    const nomePadrao = item.nameTag || formatarNomeItem(item.typeId);
     const form = new ModalFormData()
         .title("Anunciar item")
         .textField("Preço (em moedas, número inteiro)", "Ex: 5000")
-        .dropdown("Duração do anúncio", ["24 horas", "48 horas", "72 horas"], { defaultValueIndex: 0 });
+        .dropdown("Duração do anúncio", ["24 horas", "48 horas", "72 horas"], { defaultValueIndex: 0 })
+        .textField("Nome de exibição (opcional)", `Padrão: ${nomePadrao}`);
 
     let resposta;
     try {
@@ -559,12 +570,17 @@ async function abrirAnunciarItem(jogador) {
     }
     if (resposta.canceled || !resposta.formValues) return;
 
-    const [precoTexto, indiceDuracao] = resposta.formValues;
+    const [precoTexto, indiceDuracao, nomeExibicaoTexto] = resposta.formValues;
     const preco = Number(precoTexto);
     if (!Number.isInteger(preco) || preco <= 0) {
         jogador.sendMessage("Preço inválido — use um número inteiro maior que zero.");
         return;
     }
+
+    // Nome de exibição é só cosmético pro anúncio — nunca sobrescreve o
+    // nameTag real do item (esse continua intacto pra quando o item voltar
+    // pro inventário). Vazio = usa o nome padrão (nameTag real ou typeId).
+    const nomeExibicao = String(nomeExibicaoTexto ?? "").trim().slice(0, 50) || null;
 
     const horasPorIndice = [24, 48, 72];
     const horas = horasPorIndice[indiceDuracao] ?? 24;
@@ -587,10 +603,10 @@ async function abrirAnunciarItem(jogador) {
         return;
     }
 
-    await confirmarAnuncio(jogador, slot, assinaturaOriginal, preco, expiraEm);
+    await confirmarAnuncio(jogador, slot, assinaturaOriginal, preco, expiraEm, nomeExibicao);
 }
 
-async function confirmarAnuncio(jogador, slot, assinaturaOriginal, preco, expiraEm) {
+async function confirmarAnuncio(jogador, slot, assinaturaOriginal, preco, expiraEm, nomeExibicao) {
     const listingId = gerarId("ah_");
 
     let resposta;
@@ -675,6 +691,7 @@ async function confirmarAnuncio(jogador, slot, assinaturaOriginal, preco, expira
         criadoEm: Date.now(),
         expiraEm,
         preco,
+        nomeExibicao,
         item: itemSerializado,
     });
 
@@ -717,7 +734,7 @@ async function abrirMinhasVendas(jogador) {
 
     const form = new ActionFormData().title("Minhas vendas").body("Escolha um anúncio pra cancelar.");
     for (const dados of meus) {
-        const nome = dados.item.nameTag || formatarNomeItem(dados.item.typeId);
+        const nome = nomeDeExibicao(dados);
         const status = dados.expiraEm < agora ? "expirado" : "ativo";
         form.button(`${nome}\n${dados.preco} moedas (${status})`, ICONE_PLACEHOLDER);
     }

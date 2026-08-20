@@ -104,31 +104,60 @@ function aguardarTicks(ticks) {
     });
 }
 
-// Canalização de 3s antes de voltar pra Home — contagem na actionbar + som,
-// cancela se o jogador tomar dano nesse meio-tempo, e mostra partículas
-// brancas no destino (só depois do teleporte de verdade, via irParaCasa —
-// essa função não é modificada, só chamada no final). APIs confirmadas por
-// pesquisa antes de usar: system.runTimeout/clearRun, world.afterEvents.
-// entityHurt (propriedade hurtEntity), player.onScreenDisplay.setActionBar,
-// player.playSound, Dimension.spawnParticle + MolangVariableMap.
+// Posição num círculo de raio "raio" em volta de "centro", no ângulo dado
+// (graus). Usada pra fazer a partícula girar em volta do jogador durante a
+// canalização — cada passo do loop chama isso com um ângulo maior.
+function posicaoNoCirculo(centro, anguloGraus, raio, alturaExtra) {
+    const rad = (anguloGraus * Math.PI) / 180;
+    return {
+        x: centro.x + raio * Math.cos(rad),
+        y: centro.y + alturaExtra,
+        z: centro.z + raio * Math.sin(rad),
+    };
+}
+
+// Canalização de 3s antes de voltar pra Home — contagem decimal na actionbar
+// (3.0, 2.9, 2.8...) + som, cancela se o jogador tomar dano nesse
+// meio-tempo, com partículas brancas pequenas girando em volta do jogador
+// durante a espera (tipo recall) e um flash maior no destino, depois do
+// teleporte de verdade (via irParaCasa — essa função não é modificada, só
+// chamada no final). APIs confirmadas por pesquisa antes de usar:
+// system.runTimeout/clearRun, world.afterEvents.entityHurt (propriedade
+// hurtEntity), player.onScreenDisplay.setActionBar, player.playSound,
+// Dimension.spawnParticle + MolangVariableMap.
 export async function irParaCasaComEfeito(jogador) {
-    const TICKS_POR_SEGUNDO = 20;
-    const SEGUNDOS_CANALIZACAO = 3;
+    const DURACAO_SEGUNDOS = 3;
+    const PASSOS_POR_SEGUNDO = 10; // contagem em décimos (3.0, 2.9, 2.8...)
+    const TICKS_POR_PASSO = 2; // 10 passos/s * 2 ticks = 20 ticks/s
+    const TOTAL_PASSOS = DURACAO_SEGUNDOS * PASSOS_POR_SEGUNDO;
+    const RAIO_PARTICULA = 0.6;
+    const GRAUS_POR_PASSO = 40; // velocidade da rotação — ~1 volta a cada 9 passos
+
     let interrompido = false;
 
     const assinaturaDano = world.afterEvents.entityHurt.subscribe((evento) => {
         if (evento.hurtEntity === jogador) interrompido = true;
     });
 
+    const corBranca = new MolangVariableMap();
+    corBranca.setColorRGB("variable.color", { red: 1, green: 1, blue: 1 });
+
     try {
-        for (let segundosRestantes = SEGUNDOS_CANALIZACAO; segundosRestantes > 0; segundosRestantes--) {
+        let angulo = 0;
+        for (let passo = 0; passo < TOTAL_PASSOS; passo++) {
+            const restante = (DURACAO_SEGUNDOS - passo / PASSOS_POR_SEGUNDO).toFixed(1);
             try {
-                jogador.onScreenDisplay.setActionBar(`Voltando para casa em ${segundosRestantes}...`);
-                jogador.playSound("entity.experience_orb.pickup");
+                jogador.onScreenDisplay.setActionBar(`Voltando para casa em ${restante}s`);
+                const posParticula = posicaoNoCirculo(jogador.location, angulo, RAIO_PARTICULA, 1);
+                jogador.dimension.spawnParticle("minecraft:glow_particle", posParticula, corBranca);
+                if (passo % PASSOS_POR_SEGUNDO === 0) {
+                    jogador.playSound("entity.experience_orb.pickup");
+                }
             } catch (erroUi) {
                 console.warn(`[SonheMenu] falha ao atualizar canalização de Home pra ${jogador?.name}: ${erroUi}`);
             }
-            await aguardarTicks(TICKS_POR_SEGUNDO);
+            angulo = (angulo + GRAUS_POR_PASSO) % 360;
+            await aguardarTicks(TICKS_POR_PASSO);
             if (interrompido) break;
         }
 
