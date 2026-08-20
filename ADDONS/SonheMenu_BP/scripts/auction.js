@@ -79,6 +79,21 @@ function formatarTempoRestante(ms) {
     return `${minutos}min`;
 }
 
+// Não existe API (nem convenção 100% confiável) pra resolver o ícone real
+// de um item arbitrário a partir do typeId — pesquisado e confirmado.
+// Em vez de mapear item por item, usa um ícone real por CATEGORIA (arma,
+// armadura, ferramenta, comida) — poucos ícones pra manter, ainda dá
+// variedade visual. Qualquer coisa fora dessas categorias cai no
+// placeholder normal.
+function iconePorCategoria(typeId) {
+    const nome = typeId.replace(/^minecraft:/, "");
+    if (/sword|bow|trident|crossbow/.test(nome)) return "textures/items/diamond_sword";
+    if (/helmet|chestplate|leggings|boots/.test(nome)) return "textures/items/diamond_chestplate";
+    if (/pickaxe|shovel|hoe|axe/.test(nome)) return "textures/items/diamond_pickaxe";
+    if (/apple|beef|porkchop|chicken|mutton|bread|carrot|potato|cookie|cake|pie|stew/.test(nome)) return "textures/items/apple";
+    return ICONE_PLACEHOLDER;
+}
+
 // ── Dynamic properties do MUNDO (a Script API não lista propriedades
 // existentes, então o índice precisa ser mantido manualmente em sincronia) ──
 
@@ -361,7 +376,7 @@ async function abrirVerAnuncios(jogador, pagina) {
     for (const dados of itensPagina) {
         const nome = nomeDeExibicao(dados);
         const restante = formatarTempoRestante(dados.expiraEm - agora);
-        form.button(`${nome}\n${dados.preco} moedas - ${dados.vendedorNomeMinecraft} (${restante})`, ICONE_PLACEHOLDER);
+        form.button(`${nome}\n${dados.preco} moedas - ${dados.vendedorNomeMinecraft} (${restante})`, iconePorCategoria(dados.item.typeId));
     }
 
     const temAnterior = paginaAtual > 0;
@@ -414,17 +429,17 @@ async function abrirDetalheAnuncio(jogador, listingId, paginaOrigem) {
 
     const nome = nomeDeExibicao(dados);
     const linhas = [
-        `Item: ${nome}`,
-        `Quantidade: ${dados.item.amount}`,
-        `Preço: ${dados.preco} moedas`,
-        `Vendedor: ${dados.vendedorNomeMinecraft}`,
+        `§5Item:§r ${nome}`,
+        `§7Quantidade:§r ${dados.item.amount}`,
+        `§7Preço:§r ${dados.preco} moedas`,
+        `§7Vendedor:§r ${dados.vendedorNomeMinecraft}`,
     ];
     if (dados.item.durabilidade) {
         const restante = dados.item.durabilidade.maxDurabilidade - dados.item.durabilidade.dano;
-        linhas.push(`Durabilidade: ${restante}/${dados.item.durabilidade.maxDurabilidade}`);
+        linhas.push(`§7Durabilidade:§r ${restante}/${dados.item.durabilidade.maxDurabilidade}`);
     }
     if (dados.item.encantamentos && dados.item.encantamentos.length > 0) {
-        linhas.push("Encantamentos:");
+        linhas.push("§7Encantamentos:§r");
         for (const ench of dados.item.encantamentos) linhas.push(`- ${ench.tipo} ${ench.nivel}`);
     }
 
@@ -537,6 +552,18 @@ function assinaturasIguais(a, b) {
     return !!a && !!b && a.typeId === b.typeId && a.amount === b.amount && a.nameTag === b.nameTag;
 }
 
+// Shulker box tem inventário interno (27 slots) que a Script API só expõe
+// quando ela já está COLOCADA como bloco (BlockInventoryComponent) — como
+// ItemStack (na mão) não há como ler nem restaurar esse conteúdo (pesquisado
+// e confirmado: nenhum componente de ItemStack cobre isso; o componente
+// "minecraft:inventory" de item só existe pra itens com "storage_item",
+// sistema dos Bundles, que shulker box não usa). Serializar/reconstruir do
+// jeito que a Auction House faz hoje perderia tudo que tiver dentro — então
+// é melhor bloquear a venda do que arriscar destruir o conteúdo de alguém.
+function temInventarioInternoNaoSuportado(typeId) {
+    return typeId.includes("shulker_box");
+}
+
 async function abrirAnunciarItem(jogador) {
     let item;
     try {
@@ -548,6 +575,14 @@ async function abrirAnunciarItem(jogador) {
 
     if (!item) {
         jogador.sendMessage("Segure o item que quer anunciar na mão.");
+        return;
+    }
+
+    if (temInventarioInternoNaoSuportado(item.typeId)) {
+        jogador.sendMessage(
+            "Shulker box ainda não pode ser anunciada — o conteúdo de dentro se perderia. " +
+                "Esvazie ela antes de anunciar, ou aguarde essa função ficar pronta."
+        );
         return;
     }
 
@@ -736,7 +771,7 @@ async function abrirMinhasVendas(jogador) {
     for (const dados of meus) {
         const nome = nomeDeExibicao(dados);
         const status = dados.expiraEm < agora ? "expirado" : "ativo";
-        form.button(`${nome}\n${dados.preco} moedas (${status})`, ICONE_PLACEHOLDER);
+        form.button(`${nome}\n${dados.preco} moedas (${status})`, iconePorCategoria(dados.item.typeId));
     }
     form.button("Voltar", ICONE_PLACEHOLDER);
 

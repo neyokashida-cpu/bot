@@ -63,12 +63,12 @@ function formatarData(timestamp) {
 function montarCabecalho(jogador) {
     const tag = obterTag(jogador);
     const moedas = obterMoedasLocais(jogador);
-    const linhas = [`Ola, ${jogador.name}`];
-    linhas.push(tag || "Sonhador");
-    linhas.push(moedas !== null ? `${GLYPH_MOEDA} ${moedas} (moedas locais)` : "Moedas locais indisponiveis");
+    const linhas = [`§5Ola, ${jogador.name}§r`];
+    linhas.push(`§7${tag || "Sonhador"}§r`);
+    linhas.push(moedas !== null ? `§7${GLYPH_MOEDA} ${moedas} (moedas locais)§r` : "§7Moedas locais indisponiveis§r");
     if (dicaAtivada(jogador)) {
         linhas.push("");
-        linhas.push(`Dica: ${dicaAleatoria()}`);
+        linhas.push(`§8Dica: ${dicaAleatoria()}§r`);
     }
     return linhas.join("\n");
 }
@@ -256,7 +256,7 @@ async function abrirPaginaSecundaria(jogador, titulo, corpo) {
 }
 
 export async function abrirMenuPrincipal(jogador) {
-    const form = new ActionFormData().title("SONHE").body(montarCabecalho(jogador));
+    const form = new ActionFormData().title("§5SONHE§r").body(montarCabecalho(jogador));
     for (const pagina of PAGINAS) {
         if (pagina.icone) {
             form.button(pagina.texto, pagina.icone);

@@ -59,7 +59,15 @@ system.run(garantirObjetivos);
 // script inteiro, cancelando todos os subscribes abaixo).
 function definirScorePorNome(objetivo, nomeJogador, valor) {
     const nomeSeguro = nomeJogador.replace(/"/g, "");
-    return world.getDimension("overworld").runCommandAsync(`scoreboard players set "${nomeSeguro}" ${objetivo} ${valor}`);
+    // Dimension só tem runCommand (síncrono) — "runCommandAsync" nunca
+    // existiu nessa API (confirmado na doc oficial); por isso essa chamada
+    // sempre derrubava com "TypeError: not a function". runCommand lança
+    // erro em caso de falha (ver try/catch nos dois lugares que chamam isso).
+    try {
+        world.getDimension("overworld").runCommand(`scoreboard players set "${nomeSeguro}" ${objetivo} ${valor}`);
+    } catch (erro) {
+        console.warn(`[SonheBridge] falha ao definir score "${objetivo}" de ${nomeJogador}: ${erro}`);
+    }
 }
 
 // Nome amigável + artigo dos mobs mais comuns do survival, pra mensagem de
@@ -292,9 +300,9 @@ async function buscarFilaDoDiscord() {
             if (item.tipo === "inventario_request") {
                 system.run(() => responderPedidoInventario(item));
             } else if (item.tipo === "definir_rank") {
-                system.run(() => definirScorePorNome(OBJ_RANK, item.jogador, item.rank).catch(() => {}));
+                system.run(() => definirScorePorNome(OBJ_RANK, item.jogador, item.rank));
             } else if (item.tipo === "definir_tag") {
-                system.run(() => definirScorePorNome(OBJ_TAG, item.jogador, item.tag).catch(() => {}));
+                system.run(() => definirScorePorNome(OBJ_TAG, item.jogador, item.tag));
             } else {
                 world.sendMessage(`§9[Discord] §f${item.autor}§7: §f${item.mensagem}`);
             }
