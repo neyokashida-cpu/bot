@@ -141,7 +141,7 @@ export async function abrirConquistas(jogador) {
     const conquistas = obterConquistas(jogador);
 
     const form = new ActionFormData()
-        .title("Conquistas")
+        .title("§dConquistas§r")
         .body(montarCorpo(conquistas))
         .button("Voltar", ICONE_PLACEHOLDER)
         .button("Fechar", ICONE_PLACEHOLDER);

@@ -19,6 +19,11 @@ import { abrirAuctionHouse } from "./auction.js";
 
 const OBJ_TAG = "sonhe_tag";
 const OBJ_MOEDAS = "sonhe_moedas";
+// Marcador invisível (só códigos § de formatação, sem texto visível) que ativa a
+// tela de grade custom (sonhe_forms.grid_screen, em SonheMenu_RP/ui/sonhe_grid.json)
+// no lugar do form padrão. Só o menu principal usa — as outras telas do addon ficam
+// na lista vertical de sempre.
+const MARCADOR_GRADE = "§s§o§n§h§e§r";
 const TAGS = ["", "Recém-chegado", "Explorador", "Investigador", "Guardião", "Veterano", "Lenda"];
 const GLYPH_MOEDA = "";
 
@@ -158,7 +163,7 @@ async function abrirCasa(jogador) {
         ? "Sua casa está definida. Você pode ir até ela ou definir um novo local (substitui o anterior)."
         : 'Você ainda não definiu uma casa. Fique no local desejado e escolha "Definir casa aqui".';
 
-    const form = new ActionFormData().title("Minha Casa").body(corpo);
+    const form = new ActionFormData().title("§dMinha Casa§r").body(corpo);
     if (definida) form.button("Ir para casa", ICONE_PLACEHOLDER);
     form.button("Definir casa aqui", ICONE_PLACEHOLDER);
     form.button("Voltar", ICONE_PLACEHOLDER);
@@ -201,7 +206,7 @@ async function abrirConfiguracoes(jogador) {
     ].join("\n");
 
     const form = new ActionFormData()
-        .title("Configurações")
+        .title("§dConfigurações§r")
         .body(corpo)
         .button(ativada ? "Desativar dica ao abrir o menu" : "Ativar dica ao abrir o menu", ICONE_PLACEHOLDER)
         .button("Voltar", ICONE_PLACEHOLDER)
@@ -248,7 +253,7 @@ async function mostrarForm(jogador, form, contexto) {
 // extra). A Auction House tem seu próprio fluxo em auction.js.
 async function abrirPaginaSecundaria(jogador, titulo, corpo) {
     const form = new ActionFormData()
-        .title(titulo)
+        .title(`§d${titulo}§r`)
         .body(corpo)
         .button("Voltar", ICONE_PLACEHOLDER)
         .button("Fechar", ICONE_PLACEHOLDER);
@@ -261,7 +266,7 @@ async function abrirPaginaSecundaria(jogador, titulo, corpo) {
 }
 
 export async function abrirMenuPrincipal(jogador) {
-    const form = new ActionFormData().title("§5SONHE§r").body(montarCabecalho(jogador));
+    const form = new ActionFormData().title(`${MARCADOR_GRADE}§dSONHE§r`).body(montarCabecalho(jogador));
     for (const pagina of PAGINAS) {
         if (pagina.icone) {
             form.button(pagina.texto, pagina.icone);

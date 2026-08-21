@@ -4,15 +4,15 @@
         "name": "SONHE Menu (Recursos)",
         "description": "Ícones do menu central do SONHE (textures/ui/sonhe/*).",
         "uuid": "b71a84eb-d21e-4460-bb7c-eb9758d1ede4",
-        "version": [1, 0, 0],
+        "version": [1, 0, 4],
         "min_engine_version": [1, 21, 50]
     },
     "modules": [
         {
-            "description": "Texturas dos botões do /menu",
+            "description": "Texturas e JSON UI dos forms do /menu",
             "type": "resources",
             "uuid": "87eac085-7dca-4c21-9682-0dc8c2717aef",
-            "version": [1, 0, 0]
+            "version": [1, 0, 4]
         }
     ]
 }

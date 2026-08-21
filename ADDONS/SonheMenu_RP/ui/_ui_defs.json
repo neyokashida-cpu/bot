@@ -1,0 +1,6 @@
+{
+    "ui_defs": [
+        "ui/sonhe_forms.json",
+        "ui/sonhe_grid.json"
+    ]
+}
