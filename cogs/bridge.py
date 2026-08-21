@@ -226,14 +226,12 @@ class Bridge(commands.Cog):
         except (ValueError, KeyError, TypeError):
             return web.json_response({"erro": "corpo inválido — esperado {jogador, mensagem}"}, status=400)
 
-        tag = str(dados.get("tag", ""))[:32]
-
         canal = self._canal_chat_mine()
         if canal is None:
             return web.json_response({"erro": "canal do Discord indisponível"}, status=503)
 
         webhook = await self._obter_webhook(canal)
-        nome_exibido = f"{tag} {jogador}".strip() if tag else jogador
+        nome_exibido = jogador
         texto = discord.utils.escape_markdown(mensagem)[:2000]
 
         try:
