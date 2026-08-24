@@ -12,7 +12,7 @@
         "sonhe_panel_background": {
           "type": "image",
           "texture": "textures/ui/sonhe/panel_frame",
-          "nine_slice_size": [12, 12, 12, 12],
+          "nine_slice_size": [115, 115, 115, 115],
           "size": ["100%", "100%"],
           "layer": 0
         }
@@ -59,8 +59,11 @@
           "layer": 10,
           "bindings": [
             {
+              "binding_name": "#title_text"
+            },
+            {
               "binding_type": "view",
-              "source_property_name": "(not (#title_text - '§s§o§n§h§e§r' = #title_text))",
+              "source_property_name": "(not ((#title_text - '§d§r§e§a§m§r') = #title_text))",
               "target_property_name": "#visible"
             }
           ]
@@ -78,8 +81,11 @@
           "layer": 2,
           "bindings": [
             {
+              "binding_name": "#title_text"
+            },
+            {
               "binding_type": "view",
-              "source_property_name": "(#title_text - '§s§o§n§h§e§r' = #title_text)",
+              "source_property_name": "((#title_text - '§d§r§e§a§m§r') = #title_text)",
               "target_property_name": "#visible"
             }
           ]

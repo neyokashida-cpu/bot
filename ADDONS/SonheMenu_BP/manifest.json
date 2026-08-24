@@ -4,7 +4,7 @@
         "name": "SONHE Menu",
         "description": "Central de navegação do jogador (/sonhe:menu, fallback !menu) — fundação extensível pra Perfil, Status, Auction House e outros sistemas futuros.",
         "uuid": "1a5f3c14-84be-473f-b2c5-c0023a262a1f",
-        "version": [1, 0, 0],
+        "version": [1, 0, 1],
         "min_engine_version": [1, 21, 50]
     },
     "modules": [

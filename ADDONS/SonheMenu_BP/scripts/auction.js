@@ -2,7 +2,7 @@ import { world, system, ItemStack } from "@minecraft/server";
 import * as mc from "@minecraft/server"; // acesso seguro a símbolos de API preview (ex: EnchantmentType) sem quebrar o import se não existirem
 import { http, HttpRequestMethod, HttpHeader, HttpRequest } from "@minecraft/server-net";
 import { ActionFormData, ModalFormData, MessageFormData } from "@minecraft/server-ui";
-import { abrirMenuPrincipal } from "./menu.js";
+import { abrirMenuPrincipal, MARCADOR_GRADE } from "./menu.js";
 
 // SONHE — Auction House.
 // Duas responsabilidades separadas por design: o ITEM fica em escrow aqui
@@ -325,7 +325,7 @@ function entregarOuGuardarNoCorreio(nomeJogadorAlvo, itemStack, itemSerializado,
 // ── Menu principal da Auction House ──────────────────────────
 export async function abrirAuctionHouse(jogador) {
     const form = new ActionFormData()
-        .title("§dAuction House§r")
+        .title(`${MARCADOR_GRADE}§dAuction House§r`)
         .body("Compre e venda itens com outros jogadores do SONHE.")
         .button("Ver anúncios", ICONE_PLACEHOLDER)
         .button("Anunciar item", ICONE_PLACEHOLDER)
@@ -370,7 +370,7 @@ async function abrirVerAnuncios(jogador, pagina) {
 
     if (anuncios.length === 0) {
         const form = new ActionFormData()
-            .title("§dVer anúncios§r")
+            .title(`${MARCADOR_GRADE}§dVer anúncios§r`)
             .body("Não há nenhum anúncio ativo no momento.")
             .button("Voltar", ICONE_PLACEHOLDER);
         try {
@@ -388,7 +388,7 @@ async function abrirVerAnuncios(jogador, pagina) {
     const itensPagina = anuncios.slice(inicio, inicio + ITENS_POR_PAGINA);
 
     const form = new ActionFormData()
-        .title(`§dVer anúncios (${paginaAtual + 1}/${totalPaginas})§r`)
+        .title(`${MARCADOR_GRADE}§dVer anúncios (${paginaAtual + 1}/${totalPaginas})§r`)
         .body("Escolha um anúncio pra ver os detalhes.");
 
     for (const dados of itensPagina) {
@@ -773,7 +773,7 @@ async function abrirMinhasVendas(jogador) {
 
     if (meus.length === 0) {
         const form = new ActionFormData()
-            .title("§dMinhas vendas§r")
+            .title(`${MARCADOR_GRADE}§dMinhas vendas§r`)
             .body("Você não tem nenhum anúncio ativo.")
             .button("Voltar", ICONE_PLACEHOLDER);
         try {
@@ -785,7 +785,7 @@ async function abrirMinhasVendas(jogador) {
         return;
     }
 
-    const form = new ActionFormData().title("§dMinhas vendas§r").body("Escolha um anúncio pra cancelar.");
+    const form = new ActionFormData().title(`${MARCADOR_GRADE}§dMinhas vendas§r`).body("Escolha um anúncio pra cancelar.");
     for (const dados of meus) {
         const nome = nomeDeExibicao(dados);
         const status = dados.expiraEm < agora ? "expirado" : "ativo";

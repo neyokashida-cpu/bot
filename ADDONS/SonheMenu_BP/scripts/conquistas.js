@@ -1,6 +1,6 @@
 import { ActionFormData } from "@minecraft/server-ui";
 import { obterEstatisticas } from "./estatisticas.js";
-import { abrirMenuPrincipal } from "./menu.js";
+import { abrirMenuPrincipal, MARCADOR_GRADE } from "./menu.js";
 import { obterComPadrao, salvarDadosJogador } from "./dados_jogador.js";
 
 // SONHE — conquistas: lista fixa, calculada só a partir das estatísticas
@@ -141,7 +141,7 @@ export async function abrirConquistas(jogador) {
     const conquistas = obterConquistas(jogador);
 
     const form = new ActionFormData()
-        .title("§dConquistas§r")
+        .title(`${MARCADOR_GRADE}§dConquistas§r`)
         .body(montarCorpo(conquistas))
         .button("Voltar", ICONE_PLACEHOLDER)
         .button("Fechar", ICONE_PLACEHOLDER);

@@ -3,7 +3,7 @@
 
   "grid_screen": {
     "type": "panel",
-    "size": ["55%", "55%"],
+    "size": ["70%", "75%"],
     "anchor_from": "center",
     "anchor_to": "center",
     "controls": [
@@ -11,7 +11,7 @@
         "sonhe_grid_background": {
           "type": "image",
           "texture": "textures/ui/sonhe/panel_frame",
-          "nine_slice_size": [12, 12, 12, 12],
+          "nine_slice_size": [115, 115, 115, 115],
           "size": ["100%", "100%"],
           "layer": 0
         }
@@ -58,15 +58,11 @@
 
   "grid_content": {
     "type": "grid",
-    "grid_dimensions": [3, 3],
+    "grid_dimensions": [3, 6],
     "grid_rescaling_type": "horizontal",
     "grid_fill_direction": "horizontal",
     "grid_item_template": "sonhe_forms.grid_button",
     "size": ["100%", "100%c"],
-    "factory": {
-      "name": "buttons",
-      "control_name": "sonhe_forms.grid_button"
-    },
     "collection_name": "form_buttons",
     "bindings": [
       {
