@@ -1,9 +1,11 @@
 {
   "namespace": "sonhe_forms",
-
   "grid_screen": {
     "type": "panel",
-    "size": ["70%", "75%"],
+    "size": [
+      340,
+      240
+    ],
     "anchor_from": "center",
     "anchor_to": "center",
     "controls": [
@@ -11,8 +13,10 @@
         "sonhe_grid_background": {
           "type": "image",
           "texture": "textures/ui/sonhe/panel_frame",
-          "nine_slice_size": [115, 115, 115, 115],
-          "size": ["100%", "100%"],
+          "size": [
+            "100%",
+            "100%"
+          ],
           "layer": 0
         }
       },
@@ -20,7 +24,10 @@
         "content": {
           "type": "stack_panel",
           "orientation": "vertical",
-          "size": ["100% - 12px", "100% - 12px"],
+          "size": [
+            "100% - 12px",
+            "100% - 12px"
+          ],
           "anchor_from": "center",
           "anchor_to": "center",
           "layer": 1,
@@ -30,22 +37,33 @@
                 "type": "label",
                 "text": "#title_text",
                 "text_alignment": "center",
-                "size": ["100%", "default"],
+                "size": [
+                  "100%",
+                  "default"
+                ],
                 "font_scale_factor": 1.2,
                 "bindings": [
-                  { "binding_name": "#title_text" }
+                  {
+                    "binding_name": "#title_text"
+                  }
                 ]
               }
             },
             {
               "padding": {
                 "type": "panel",
-                "size": ["100%", 6]
+                "size": [
+                  "100%",
+                  6
+                ]
               }
             },
             {
               "scrolling_panel@common.scrolling_panel": {
-                "size": ["100%", "fill"],
+                "size": [
+                  "100%",
+                  "fill"
+                ],
                 "$show_background": false,
                 "$scrolling_content": "sonhe_forms.grid_content"
               }
@@ -55,50 +73,53 @@
       }
     ]
   },
-
   "grid_content": {
-    "type": "grid",
-    "grid_dimensions": [3, 6],
-    "grid_rescaling_type": "horizontal",
-    "grid_fill_direction": "horizontal",
-    "grid_item_template": "sonhe_forms.grid_button",
-    "size": ["100%", "100%c"],
+    "type": "stack_panel",
+    "orientation": "vertical",
+    "size": [
+      "100%",
+      "100%c"
+    ],
+    "anchor_from": "top_left",
+    "anchor_to": "top_left",
+    "factory": {
+      "name": "buttons",
+      "control_ids": {
+        "button": "sonhe_forms.grid_button",
+        "label": "@server_form.dynamic_label",
+        "header": "@server_form.dynamic_header",
+        "divider": "@settings_common.option_group_section_divider"
+      }
+    },
     "collection_name": "form_buttons",
     "bindings": [
       {
         "binding_name": "#form_button_contents",
-        "binding_name_override": "#maximum_grid_items"
+        "binding_name_override": "#collection_length"
       }
     ]
   },
-
   "grid_button": {
     "type": "panel",
-    "size": ["33%", "60%x"],
-    "$default_button_texture": "textures/ui/sonhe/tile_frame",
-    "$hover_button_texture": "textures/ui/sonhe/tile_frame",
-    "$pressed_button_texture": "textures/ui/sonhe/tile_frame",
-    "bindings": [
-      {
-        "binding_name": "#form_button_text",
-        "binding_type": "collection",
-        "binding_collection_name": "form_buttons"
-      },
-      {
-        "binding_type": "view",
-        "source_property_name": "(not (#form_button_text = ''))",
-        "target_property_name": "#visible"
-      }
+    "size": [
+      "100%",
+      34
     ],
     "controls": [
       {
         "sonhe_icon": {
           "type": "image",
           "layer": 30,
-          "size": [24, 24],
-          "anchor_from": "center",
-          "anchor_to": "center",
-          "offset": [0, -6],
+          "size": [
+            24,
+            24
+          ],
+          "anchor_from": "left_middle",
+          "anchor_to": "left_middle",
+          "offset": [
+            4,
+            0
+          ],
           "bindings": [
             {
               "binding_name": "#form_button_texture",
@@ -111,11 +132,6 @@
               "binding_name_override": "#texture_file_system",
               "binding_type": "collection",
               "binding_collection_name": "form_buttons"
-            },
-            {
-              "binding_type": "view",
-              "source_property_name": "(not ((#texture = '') or (#texture = 'loading')))",
-              "target_property_name": "#visible"
             }
           ]
         }
@@ -125,12 +141,22 @@
           "type": "label",
           "text": "#form_button_text",
           "layer": 32,
-          "size": ["100% - 6px", "default"],
-          "anchor_from": "bottom_middle",
-          "anchor_to": "bottom_middle",
-          "offset": [0, -4],
-          "text_alignment": "center",
-          "color": [0.86, 0.78, 0.92],
+          "size": [
+            "100% - 40px",
+            "default"
+          ],
+          "anchor_from": "left_middle",
+          "anchor_to": "left_middle",
+          "offset": [
+            34,
+            0
+          ],
+          "text_alignment": "left",
+          "color": [
+            0.86,
+            0.78,
+            0.92
+          ],
           "bindings": [
             {
               "binding_name": "#form_button_text",
@@ -145,8 +171,15 @@
           "$pressed_button_name": "button.form_button_click",
           "anchor_from": "top_left",
           "anchor_to": "top_left",
-          "size": [ "100%", "100%" ],
+          "size": [
+            "100%",
+            "100%"
+          ],
+          "layer": 20,
           "$button_text": "",
+          "$default_button_texture": "textures/ui/sonhe/tile_frame",
+          "$hover_button_texture": "textures/ui/sonhe/tile_frame",
+          "$pressed_button_texture": "textures/ui/sonhe/tile_frame",
           "bindings": [
             {
               "binding_type": "collection_details",
