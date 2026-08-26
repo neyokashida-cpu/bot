@@ -1,8 +1,8 @@
 {
   "namespace": "sonhe_forms",
 
-  "//": "BASE = 1.0.26, estado em que o grid RENDERIZOU 3 por linha e o clique funcionou.",
-  "//2": "Unica mudanca sobre essa base: bindings de ancoragem de escopo (#null) no icone e no label.",
+  "//": "Tile espelhado linha a linha de Chest-UI RP/ui/chest_server_form.json (inventory_item@common.button).",
+  "//2": "Regras dele que eu antes violei: anchors #null vao NO BOTAO; todo binding leva binding_name; cada estado e um def SEPARADO; nada de $var em propriedade de layout.",
 
   "grid_screen": {
     "type": "panel",
@@ -76,98 +76,191 @@
     "size": [96, 96],
     "layer": 1,
     "controls": [
+      { "btn@sonhe_forms.tile_button": {} }
+    ]
+  },
+
+  "tile_button@common.button": {
+    "size": ["100% - 4px", "100% - 4px"],
+    "anchor_from": "center",
+    "anchor_to": "center",
+    "$pressed_button_name": "button.form_button_click",
+    "bindings": [
       {
-        "tile_bg": {
+        "binding_name": "#null",
+        "binding_type": "collection",
+        "binding_condition": "none",
+        "binding_collection_name": "form_buttons"
+      },
+      {
+        "binding_name": "#null",
+        "binding_type": "collection_details",
+        "binding_collection_name": "form_buttons"
+      },
+      {
+        "binding_name": "#form_button_text",
+        "binding_type": "collection",
+        "binding_collection_name": "form_buttons"
+      },
+      {
+        "binding_name": "#null",
+        "binding_type": "view",
+        "source_property_name": "(not (#form_button_text = ''))",
+        "target_property_name": "#visible"
+      }
+    ],
+    "$icon_bindings": [
+      {
+        "binding_name": "#form_button_texture",
+        "binding_name_override": "#texture",
+        "binding_type": "collection",
+        "binding_collection_name": "form_buttons"
+      },
+      {
+        "binding_name": "#form_button_texture_file_system",
+        "binding_name_override": "#texture_file_system",
+        "binding_type": "collection",
+        "binding_collection_name": "form_buttons"
+      }
+    ],
+    "$label_bindings": [
+      {
+        "binding_name": "#form_button_text",
+        "binding_type": "collection",
+        "binding_collection_name": "form_buttons"
+      }
+    ],
+    "default_control": "default",
+    "hover_control": "hover",
+    "pressed_control": "pressed",
+    "controls": [
+      { "default@sonhe_forms.face_default": {} },
+      { "hover@sonhe_forms.face_hover": {} },
+      { "pressed@sonhe_forms.face_pressed": {} }
+    ]
+  },
+
+  "face_default": {
+    "type": "panel",
+    "size": ["100%", "100%"],
+    "controls": [
+      {
+        "fd_bg": {
           "type": "image",
           "texture": "textures/ui/sonhe/tile_frame",
           "nineslice_size": [24, 24, 24, 24],
-          "size": ["100% - 4px", "100% - 4px"],
-          "anchor_from": "center",
-          "anchor_to": "center",
+          "size": ["100%", "100%"],
+          "alpha": 1.0,
           "layer": 1
         }
       },
       {
-        "tile_icon": {
+        "fd_icon": {
           "type": "image",
           "size": [32, 32],
           "anchor_from": "top_middle",
           "anchor_to": "top_middle",
-          "offset": [0, 14],
-          "layer": 3,
-          "bindings": [
-            {
-              "binding_name": "#null",
-              "binding_type": "collection",
-              "binding_condition": "none",
-              "binding_collection_name": "form_buttons"
-            },
-            {
-              "binding_name": "#null",
-              "binding_type": "collection_details",
-              "binding_collection_name": "form_buttons"
-            },
-            {
-              "binding_name": "#form_button_texture",
-              "binding_name_override": "#texture",
-              "binding_type": "collection",
-              "binding_collection_name": "form_buttons"
-            },
-            {
-              "binding_name": "#form_button_texture_file_system",
-              "binding_name_override": "#texture_file_system",
-              "binding_type": "collection",
-              "binding_collection_name": "form_buttons"
-            }
-          ]
+          "offset": [0, 12],
+          "layer": 4,
+          "bindings": "$icon_bindings"
         }
       },
       {
-        "tile_label": {
+        "fd_label": {
           "type": "label",
           "text": "#form_button_text",
-          "size": ["100% - 10px", "default"],
+          "size": ["100% - 8px", "default"],
           "anchor_from": "bottom_middle",
           "anchor_to": "bottom_middle",
-          "offset": [0, -10],
+          "offset": [0, -8],
           "text_alignment": "center",
           "color": [0.20, 0.07, 0.30],
-          "layer": 3,
-          "bindings": [
-            {
-              "binding_name": "#null",
-              "binding_type": "collection",
-              "binding_condition": "none",
-              "binding_collection_name": "form_buttons"
-            },
-            {
-              "binding_name": "#null",
-              "binding_type": "collection_details",
-              "binding_collection_name": "form_buttons"
-            },
-            {
-              "binding_name": "#form_button_text",
-              "binding_type": "collection",
-              "binding_collection_name": "form_buttons"
-            }
-          ]
+          "layer": 4,
+          "bindings": "$label_bindings"
+        }
+      }
+    ]
+  },
+
+  "face_hover": {
+    "type": "panel",
+    "size": ["100%", "100%"],
+    "controls": [
+      {
+        "fh_bg": {
+          "type": "image",
+          "texture": "textures/ui/sonhe/tile_frame",
+          "nineslice_size": [24, 24, 24, 24],
+          "size": ["100%", "100%"],
+          "alpha": 0.72,
+          "layer": 1
         }
       },
       {
-        "tile_button@common_buttons.light_text_button": {
-          "size": ["100% - 4px", "100% - 4px"],
-          "anchor_from": "center",
-          "anchor_to": "center",
-          "layer": 2,
-          "$button_text": "",
-          "$button_pressed_offset": [0, 0],
-          "$pressed_button_name": "button.form_button_click",
-          "bindings": [
-            {
-              "binding_type": "collection_details",
-              "binding_collection_name": "form_buttons"
-            }
-          ]
+        "fh_icon": {
+          "type": "image",
+          "size": [32, 32],
+          "anchor_from": "top_middle",
+          "anchor_to": "top_middle",
+          "offset": [0, 12],
+          "layer": 4,
+          "bindings": "$icon_bindings"
+        }
+      },
+      {
+        "fh_label": {
+          "type": "label",
+          "text": "#form_button_text",
+          "size": ["100% - 8px", "default"],
+          "anchor_from": "bottom_middle",
+          "anchor_to": "bottom_middle",
+          "offset": [0, -8],
+          "text_alignment": "center",
+          "color": [0.10, 0.02, 0.18],
+          "layer": 4,
+          "bindings": "$label_bindings"
+        }
+      }
+    ]
+  },
+
+  "face_pressed": {
+    "type": "panel",
+    "size": ["100%", "100%"],
+    "controls": [
+      {
+        "fp_bg": {
+          "type": "image",
+          "texture": "textures/ui/sonhe/tile_frame",
+          "nineslice_size": [24, 24, 24, 24],
+          "size": ["100%", "100%"],
+          "alpha": 0.55,
+          "layer": 1
+        }
+      },
+      {
+        "fp_icon": {
+          "type": "image",
+          "size": [32, 32],
+          "anchor_from": "top_middle",
+          "anchor_to": "top_middle",
+          "offset": [0, 12],
+          "layer": 4,
+          "bindings": "$icon_bindings"
+        }
+      },
+      {
+        "fp_label": {
+          "type": "label",
+          "text": "#form_button_text",
+          "size": ["100% - 8px", "default"],
+          "anchor_from": "bottom_middle",
+          "anchor_to": "bottom_middle",
+          "offset": [0, -8],
+          "text_alignment": "center",
+          "color": [0.10, 0.02, 0.18],
+          "layer": 4,
+          "bindings": "$label_bindings"
         }
       }
     ]
