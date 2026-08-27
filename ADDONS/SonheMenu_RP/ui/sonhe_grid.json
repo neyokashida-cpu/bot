@@ -1,257 +1,140 @@
 {
   "namespace": "sonhe_forms",
-  "//": "TEMA DARK sem nenhum asset custom. Todo retangulo escuro e um type:image apontando para 'textures/ui/Black' (2x2, RGB puro (0,0,0)) com alpha; o que precisa de outra cor usa 'textures/ui/white_background' (2x2 branco chapado) tingido por color. NUNCA usar 'textures/ui/White': o arquivo shipado tem borda PRETA opaca de 2px.",
+
+  "//": "TEMA DARK sem nenhum asset custom. Todo retangulo escuro e um type:image apontando para 'textures/ui/Black' (2x2, RGB puro (0,0,0), 48 usos no RP vanilla) com alpha; o que precisa de outra cor usa 'textures/ui/white_background' (2x2 branco chapado) tingido por color. NUNCA usar 'textures/ui/White': o arquivo shipado e um quadrado branco 11x11 com borda PRETA opaca de 2px, estica feio.",
   "//2": "MECANICA PRESERVADA (nao mexer): item de grid em PIXEL FIXO; grid com grid_dimensions e SEM binding de contagem; par de ancoras '#null' collection + '#null' collection_details repetido em CADA folha irma do botao ANTES do binding de dado; icone e um image SEM propriedade texture, lendo por binding_name_override -> #texture / #texture_file_system; label com text '#form_button_text'; collection_details no proprio botao.",
   "//3": "PROIBIDO nesta build: a grafia errada de nineslice_size (com underscore no meio), modifications, collection_index, grid_dimensions junto de #maximum_grid_items, item de grid percentual, pai %c/%cm com filho %/fill no mesmo eixo, filho com nome igual ao do @base, array de bindings via $variavel.",
-  "//R1": "AREA MORTA: grid_screen deixou de ter altura fixa 452. Topologia vanilla literal de common_dialogs.common_panel + dialog_background_hollow_common (ui_template_dialogs.json): o FUNDO E PAI DO CONTEUDO, nunca irmao em 100%/100%. Cadeia: LARGURA desce (320 -> 100% -> 100% - 2px -> 288), ALTURA sobe (100%c em todo nivel). Zero ciclo, nenhum pai %c com filho % no mesmo eixo.",
-  "//R1b": "O fio de borda tambem mudou de irmao '100% + 2px' para PAI '100%c + 2px', com o fundo centrado em '100% - 2px' dentro dele: da 1px de fio em cada lado sem que nenhum filho pergunte o tamanho ao pai. Aritmetica com %c e vanilla ('100%c + 31px' em dialog_background_hollow_3).",
-  "//R1c": "RESSALVA HONESTA: grid_dimensions [3,4] continua reservando 4 linhas SEMPRE, entao a area morta do proprio grid nao foi eliminada (exigiria grid_rescaling_type + #maximum_grid_items, que a pesquisa NAO confirmou para form_buttons). O que foi eliminado e a folga fixa do painel, que agora acompanha titulo/regua/corpo. Alem disso o tile passou de 96x96 para 96x80: as 4 linhas caem de 384px para 320px, 64px de area morta a menos, mantendo as 12 celulas. Reduzir para [3,3] seria REGREDIR: 'Ver anuncios' chega a 13 botoes.",
-  "//R2": "LABEL DO TILE: branco puro [1,1,1] + shadow true. Vanilla: $dark_grid_item_text_color = [1.0,1.0,1.0], e todo label sobre fundo escuro leva shadow (hud.chat_label, common.stack_count_label, common_buttons.nested_base_label). A face default do tile tambem clareou: era Black alpha .85 (quase preto puro), virou white_background tingido [0.17,0.16,0.21].",
-  "//R3": "CORPO TRUNCADO: max_size ['100% - 8px', 30] REMOVIDO. Nao existe propriedade de truncamento em label; o '...' era o max_size no eixo Y cortando a altura. Shape do vanilla server_form.long_form_scrolling_content.main_label: size ['100%','default'] SEM max_size, dentro de pai '100%c'. Agora 4+ linhas empurram o painel em vez de cortar. Cor subiu de [0.72,0.72,0.78] para [0.85,0.85,0.85] ($place_holder_text_color); o piso vanilla para texto sobre fundo escuro e 0.7.",
-  "//R4": "ICONE APAGADO: nao existe propriedade que CLAREIE imagem. 'color' MULTIPLICA (zero uso vanilla > 1.0) e 'grayscale' so dessatura. A correcao definitiva e reexportar textures/ui/sonhe/* em arte clara (quase branca), como o vanilla faz com glyph branco + $dark_glyph_default_color [1,1,1]. O que ficou aqui e a mitigacao vanilla: placa clara atras do icone (dentro das faces do botao, que ja se auto-ocultam) para o icone escuro virar silhueta legivel, mais a face do tile menos preta. O tile_icon segue image NU: sem color, sem alpha.",
+  "//4": "P1 resolvido: o antigo tile_icon_placeholder (image estatico, sem binding nenhum) foi DELETADO. Agora tudo que pinta fundo no tile mora DENTRO do tile_button, que ja se auto-oculta pelo view binding de #visible; e o label ganhou o mesmo view binding. Celula vazia = zero pixel desenhado.",
+  "//5": "P3/P4 NAO resolvidos de proposito: exigiriam trocar grid_dimensions por grid_rescaling_type + #maximum_grid_items, e a pesquisa NAO confirmou que #form_button_contents alimenta #maximum_grid_items. Altura continua FIXA.",
+
   "grid_screen": {
-    "//": "R1 REVERTIDO: a topologia fundo-pai com %c encadeado em 2 niveis (image->image->stack) nunca foi confirmada em jogo e coincide com o commit que quebrou. Volta pra SIBLING + altura FIXA, que e o estado que voce viu funcionando (print do tema dark).",
     "type": "panel",
-    "size": [
-      320,
-      452
-    ],
+    "size": [ 320, 452 ],
     "anchor_from": "center",
     "anchor_to": "center",
     "controls": [
       {
         "panel_edge": {
+          "//": "fio de 1px em volta, sem asset: retangulo cinza 2px maior atras do fundo preto.",
           "type": "image",
           "texture": "textures/ui/white_background",
-          "size": [
-            "100% + 2px",
-            "100% + 2px"
-          ],
-          "color": [
-            0.42,
-            0.4,
-            0.5
-          ],
+          "size": [ "100% + 2px", "100% + 2px" ],
+          "color": [ 0.42, 0.40, 0.50 ],
           "alpha": 0.5,
           "layer": 0
         }
       },
       {
         "panel_bg": {
+          "//": "FUNDO DO PAINEL: preto ~70% (mesmo valor do hud_screen.player_position vanilla). SEM propagate_alpha: o alpha nao vaza para os filhos, titulo/corpo/labels/icones ficam opacos.",
           "type": "image",
           "texture": "textures/ui/Black",
-          "size": [
-            "100%",
-            "100%"
-          ],
+          "size": [ "100%", "100%" ],
           "alpha": 0.7,
           "layer": 1
         }
       },
-      {
-        "grid_content@sonhe_forms.grid_stack": {
-          "layer": 2
-        }
-      }
+      { "grid_content@sonhe_forms.grid_stack": { "layer": 2 } }
     ]
   },
+
   "grid_stack": {
-    "//": "Sem offset vertical: offset NAO entra na medicao %c do pai e desalinharia o fundo. O respiro de topo e de base sao filhos pixel-fixos, padrao literal de npc_interact_screen.json (top_pad@common.empty_panel).",
     "type": "stack_panel",
     "orientation": "vertical",
-    "size": [
-      288,
-      "100%c"
-    ],
+    "size": [ 288, "100%c" ],
     "anchor_from": "top_middle",
     "anchor_to": "top_middle",
-    "layer": 3,
+    "offset": [ 0, 16 ],
     "controls": [
-      {
-        "pad_top": {
-          "type": "panel",
-          "size": [
-            "100%",
-            8
-          ]
-        }
-      },
-      {
-        "head_title@sonhe_forms.screen_title": {}
-      },
-      {
-        "gap_a": {
-          "type": "panel",
-          "size": [
-            "100%",
-            4
-          ]
-        }
-      },
-      {
-        "head_rule@sonhe_forms.title_rule": {}
-      },
-      {
-        "gap_b": {
-          "type": "panel",
-          "size": [
-            "100%",
-            8
-          ]
-        }
-      },
-      {
-        "head_body@sonhe_forms.screen_body": {}
-      },
-      {
-        "gap_c": {
-          "type": "panel",
-          "size": [
-            "100%",
-            12
-          ]
-        }
-      },
-      {
-        "tiles@sonhe_forms.tiles_grid": {}
-      },
-      {
-        "pad_bottom": {
-          "type": "panel",
-          "size": [
-            "100%",
-            10
-          ]
-        }
-      }
+      { "head_title@sonhe_forms.screen_title": {} },
+      { "gap_a": { "type": "panel", "size": [ "100%", 4 ] } },
+      { "head_rule@sonhe_forms.title_rule": {} },
+      { "gap_b": { "type": "panel", "size": [ "100%", 8 ] } },
+      { "head_body@sonhe_forms.screen_body": {} },
+      { "gap_c": { "type": "panel", "size": [ "100%", 12 ] } },
+      { "tiles@sonhe_forms.tiles_grid": {} }
     ]
   },
+
   "screen_title": {
-    "//": "Display MinecraftTen no shape literal de common.minecraftTenLabel (backup_font_type UIFont + font_scale_factor 1.39 + offset [0,-2]). Branco puro na mao: NAO herdar $title_text_color, que e [0.3,0.3,0.3] (texto ESCURO, feito para moldura clara) e desaparece no preto.",
+    "//": "Display MinecraftTen no shape literal de common.minecraftTenLabel (backup_font_type UIFont + font_scale_factor 1.39 + offset [0,-2], senao fica pequeno e desalinhado). Branco puro na mao: NAO herdar $title_text_color, que e cinza escuro [0.3,0.3,0.3] e desaparece no preto.",
     "type": "label",
     "text": "#title_text",
-    "size": [
-      "100%",
-      "default"
-    ],
+    "size": [ "100%", "default" ],
     "text_alignment": "center",
     "font_type": "MinecraftTen",
     "backup_font_type": "UIFont",
     "font_scale_factor": 1.39,
-    "offset": [
-      0,
-      -2
-    ],
-    "color": [
-      1.0,
-      1.0,
-      1.0
-    ],
+    "offset": [ 0, -2 ],
+    "color": [ 1.0, 1.0, 1.0 ],
     "shadow": false,
     "localize": false,
     "layer": 3,
     "bindings": [
-      {
-        "binding_name": "#title_text",
-        "binding_type": "global"
-      }
+      { "binding_name": "#title_text", "binding_type": "global" }
     ]
   },
+
   "title_rule": {
-    "//": "separador de 1px sob o titulo. Puro color+alpha, zero asset. Medida mantida do que ja renderiza.",
+    "//": "separador de 1px sob o titulo. Puro color+alpha, zero asset.",
     "type": "image",
     "texture": "textures/ui/white_background",
-    "size": [
-      "100%",
-      1
-    ],
-    "color": [
-      0.55,
-      0.52,
-      0.68
-    ],
+    "size": [ "100%", 1 ],
+    "color": [ 0.55, 0.52, 0.68 ],
     "alpha": 0.35,
     "layer": 3
   },
+
   "screen_body": {
-    "//": "R3: SEM max_size. Largura limitada + altura 'default' = quebra de linha automatica e N linhas; essa altura entra no %c do stack e empurra o painel. Identico a server_form.long_form_scrolling_content.main_label. NUNCA reintroduzir max_size no eixo Y aqui: e ele que corta com '...'.",
+    "//": "Corpo menor e mais claro que o titulo. Largura limitada + altura 'default' = quebra de linha automatica (nao existe propriedade de word-wrap); max_size 30 = 3 linhas de 10px.",
     "type": "label",
     "text": "#form_text",
-    "size": [
-      "100% - 8px",
-      "default"
-    ],
+    "size": [ "100% - 8px", "default" ],
+    "max_size": [ "100% - 8px", 30 ],
     "text_alignment": "left",
     "font_type": "smooth",
     "font_size": "normal",
     "line_padding": 1,
-    "color": [
-      0.85,
-      0.85,
-      0.85
-    ],
-    "shadow": true,
+    "color": [ 0.72, 0.72, 0.78 ],
+    "shadow": false,
     "hide_hyphen": true,
     "localize": false,
     "layer": 3,
     "bindings": [
-      {
-        "binding_name": "#form_text"
-      }
+      { "binding_name": "#form_text" }
     ]
   },
+
   "tiles_grid": {
-    "//": "MECANICA INALTERADA: grid_dimensions [3,4] + collection_name, SEM binding de contagem. 3 colunas de 96px = os 288px do grid_stack. Altura 'default' = 4 * 80 = 320px, resolvida sem consultar o pai, o que alimenta o %c da cadeia do R1.",
+    "//": "INALTERADO: grid_dimensions [3,4] + collection_name, SEM binding de contagem. 3 colunas de 96px = os 288px do grid_stack.",
     "type": "grid",
-    "size": [
-      "100%",
-      "default"
-    ],
-    "offset": [
-      0,
-      0
-    ],
-    "grid_dimensions": [
-      3,
-      4
-    ],
+    "size": [ "100%", "default" ],
+    "offset": [ 0, 0 ],
+    "grid_dimensions": [ 3, 4 ],
     "grid_item_template": "sonhe_forms.tile",
     "collection_name": "form_buttons",
     "layer": 1
   },
+
   "tile": {
-    "//": "PIXEL FIXO obrigatorio. 96x80 (era 96x96): tira 64px de area morta nas 4 linhas reservadas sem perder nenhuma das 12 celulas. Nenhum filho estatico aqui: tudo que pinta fundo mora DENTRO das faces do botao, que desaparecem junto nas celulas vazias.",
+    "//": "PIXEL FIXO obrigatorio. Nao existe mais nenhum filho estatico aqui: o fundo escuro virou filho dos estados do botao, entao ele desaparece junto nas celulas vazias.",
     "type": "panel",
-    "size": [
-      96,
-      80
-    ],
+    "size": [ 96, 96 ],
     "layer": 1,
     "controls": [
-      {
-        "tile_hit@sonhe_forms.tile_button": {}
-      },
-      {
-        "icon@sonhe_forms.tile_icon": {}
-      },
-      {
-        "tile_name@sonhe_forms.tile_label": {}
-      }
+      { "tile_hit@sonhe_forms.tile_button": {} },
+      { "icon@sonhe_forms.tile_icon": {} },
+      { "tile_name@sonhe_forms.tile_label": {} }
     ]
   },
+
   "tile_button@common.button": {
-    "size": [
-      88,
-      72
-    ],
+    "size": [ 88, 88 ],
     "anchor_from": "center",
     "anchor_to": "center",
     "layer": 2,
     "$pressed_button_name": "button.form_button_click",
-    "$button_pressed_offset": [
-      0,
-      0
-    ],
+    "$button_pressed_offset": [ 0, 0 ],
     "bindings": [
       {
         "binding_name": "#null",
@@ -280,241 +163,111 @@
     "hover_control": "hover",
     "pressed_control": "pressed",
     "controls": [
-      {
-        "default@sonhe_forms.face_default": {}
-      },
-      {
-        "hover@sonhe_forms.face_hover": {}
-      },
-      {
-        "pressed@sonhe_forms.face_pressed": {}
-      }
+      { "default@sonhe_forms.face_default": {} },
+      { "hover@sonhe_forms.face_hover": {} },
+      { "pressed@sonhe_forms.face_pressed": {} }
     ]
   },
-  "//faces": "Os 3 estados sao panels de tamanho IDENTICO, mesma geometria, ZERO offset: mudam SO color/alpha, entao o conteudo nao pula no hover/pressed. Layer sobe por estado (1/4/5), padrao dos dark_text_button. Cada face carrega a placa clara do icone (R4): como a face morre junto com o botao pelo view binding de #visible, a placa NUNCA aparece em celula vazia - foi por isso que o antigo tile_icon_placeholder estatico teve de ser deletado. Geometria da placa: 40x40 em anchor top_middle offset [0,0] de um botao de 72px = tile y 4..44, centro 24, exatamente o centro do icone (tile y 8..40).",
+
+  "//faces": "Os 3 estados sao panels de tamanho IDENTICO, mesma geometria, ZERO offset: mudam SO color/alpha. Assim o conteudo nao pula no hover/pressed (o deslocamento vanilla vem de $button_pressed_offset dos templates common_buttons, aqui zerado). Layer sobe por estado (1/4/5), padrao dos dark_text_button, pra borda do hover nao ficar sob o tile vizinho.",
+
   "face_default": {
     "type": "panel",
-    "size": [
-      "100%",
-      "100%"
-    ],
+    "size": [ "100%", "100%" ],
     "layer": 1,
     "controls": [
       {
         "fd_bg": {
-          "//": "R2/R4: era Black alpha .85, praticamente preto puro, e tanto o icone quanto o label morriam nele. Agora white_background tingido de cinza-escuro - a mesma mecanica que hover/pressed ja usavam.",
+          "//": "FUNDO DO TILE: preto ~85% (mesmo valor do black_tint_image do authentication_modals).",
           "type": "image",
-          "texture": "textures/ui/white_background",
-          "size": [
-            "100%",
-            "100%"
-          ],
-          "color": [
-            0.17,
-            0.16,
-            0.21
-          ],
-          "alpha": 0.92,
+          "texture": "textures/ui/Black",
+          "size": [ "100%", "100%" ],
+          "alpha": 0.85,
           "layer": 1
-        }
-      },
-      {
-        "fd_plate": {
-          "//": "R4: placa clara atras do icone. Nao clareia o PNG (color MULTIPLICA), mas transforma icone escuro em silhueta legivel.",
-          "type": "image",
-          "texture": "textures/ui/white_background",
-          "size": [
-            40,
-            40
-          ],
-          "anchor_from": "top_middle",
-          "anchor_to": "top_middle",
-          "offset": [
-            0,
-            0
-          ],
-          "color": [
-            0.72,
-            0.7,
-            0.82
-          ],
-          "alpha": 0.12,
-          "layer": 2
         }
       },
       {
         "fd_edge": {
           "type": "image",
           "texture": "textures/ui/white_background",
-          "size": [
-            "100%",
-            1
-          ],
+          "size": [ "100%", 1 ],
           "anchor_from": "top_middle",
           "anchor_to": "top_middle",
-          "color": [
-            0.55,
-            0.52,
-            0.68
-          ],
+          "color": [ 0.55, 0.52, 0.68 ],
           "alpha": 0.18,
-          "layer": 3
+          "layer": 2
         }
       }
     ]
   },
+
   "face_hover": {
     "type": "panel",
-    "size": [
-      "100%",
-      "100%"
-    ],
+    "size": [ "100%", "100%" ],
     "layer": 4,
     "controls": [
       {
         "fh_bg": {
           "type": "image",
           "texture": "textures/ui/white_background",
-          "size": [
-            "100%",
-            "100%"
-          ],
-          "color": [
-            0.26,
-            0.24,
-            0.32
-          ],
-          "alpha": 0.97,
+          "size": [ "100%", "100%" ],
+          "color": [ 0.16, 0.15, 0.20 ],
+          "alpha": 0.95,
           "layer": 1
-        }
-      },
-      {
-        "fh_plate": {
-          "type": "image",
-          "texture": "textures/ui/white_background",
-          "size": [
-            40,
-            40
-          ],
-          "anchor_from": "top_middle",
-          "anchor_to": "top_middle",
-          "offset": [
-            0,
-            0
-          ],
-          "color": [
-            0.85,
-            0.82,
-            1.0
-          ],
-          "alpha": 0.16,
-          "layer": 2
         }
       },
       {
         "fh_edge": {
           "type": "image",
           "texture": "textures/ui/white_background",
-          "size": [
-            "100%",
-            1
-          ],
+          "size": [ "100%", 1 ],
           "anchor_from": "top_middle",
           "anchor_to": "top_middle",
-          "color": [
-            0.8,
-            0.74,
-            1.0
-          ],
+          "color": [ 0.80, 0.74, 1.0 ],
           "alpha": 0.55,
-          "layer": 3
+          "layer": 2
         }
       }
     ]
   },
+
   "face_pressed": {
     "type": "panel",
-    "size": [
-      "100%",
-      "100%"
-    ],
+    "size": [ "100%", "100%" ],
     "layer": 5,
     "controls": [
       {
         "fp_bg": {
           "type": "image",
           "texture": "textures/ui/white_background",
-          "size": [
-            "100%",
-            "100%"
-          ],
-          "color": [
-            0.34,
-            0.31,
-            0.42
-          ],
+          "size": [ "100%", "100%" ],
+          "color": [ 0.24, 0.22, 0.30 ],
           "alpha": 1.0,
           "layer": 1
-        }
-      },
-      {
-        "fp_plate": {
-          "type": "image",
-          "texture": "textures/ui/white_background",
-          "size": [
-            40,
-            40
-          ],
-          "anchor_from": "top_middle",
-          "anchor_to": "top_middle",
-          "offset": [
-            0,
-            0
-          ],
-          "color": [
-            0.92,
-            0.9,
-            1.0
-          ],
-          "alpha": 0.2,
-          "layer": 2
         }
       },
       {
         "fp_edge": {
           "type": "image",
           "texture": "textures/ui/white_background",
-          "size": [
-            "100%",
-            1
-          ],
+          "size": [ "100%", 1 ],
           "anchor_from": "top_middle",
           "anchor_to": "top_middle",
-          "color": [
-            0.9,
-            0.86,
-            1.0
-          ],
+          "color": [ 0.90, 0.86, 1.0 ],
           "alpha": 0.75,
-          "layer": 3
+          "layer": 2
         }
       }
     ]
   },
+
   "tile_icon": {
-    "//": "IMAGE NU: sem propriedade texture (ela chega por binding_name_override), sem color e sem alpha - qualquer um dos dois escureceria mais ainda (R4). Os 2 bindings de ancora vem ANTES dos bindings de dado, senao le vazio em todas as celulas. keep_ratio para PNG nao quadrado nao esticar.",
+    "//": "IMAGE SEM propriedade texture: a textura chega por binding_name_override. Os 2 bindings de ancora vem ANTES dos bindings de dado, senao le vazio em todas as celulas.",
     "type": "image",
-    "size": [
-      32,
-      32
-    ],
-    "keep_ratio": true,
+    "size": [ 32, 32 ],
     "anchor_from": "top_middle",
     "anchor_to": "top_middle",
-    "offset": [
-      0,
-      8
-    ],
+    "offset": [ 0, 16 ],
     "layer": 3,
     "bindings": [
       {
@@ -547,37 +300,25 @@
       }
     ]
   },
+
   "tile_label": {
-    "//": "R2: branco PURO ($dark_grid_item_text_color vanilla = [1,1,1]) + shadow true, que e o mecanismo de contraste do vanilla em todo label sobre fundo escuro. max_size 20 = 2 linhas, MANTIDO de proposito para clipar nome comprido dentro do tile - isso e permitido (o vanilla faz em nested_centered_label_control); o proibido era clipar o CORPO do form. O view binding de #visible no FIM garante que nada sobre na celula vazia.",
+    "//": "Legivel sobre preto: quase-branco, smooth, sem shadow (o fundo e nosso). Largura limitada + altura default = quebra automatica; max_size 20 = 2 linhas. O view binding de #visible no FIM garante que nada sobre na celula vazia.",
     "type": "label",
     "text": "#form_button_text",
-    "size": [
-      "100% - 10px",
-      "default"
-    ],
-    "max_size": [
-      "100% - 10px",
-      20
-    ],
+    "size": [ "100% - 10px", "default" ],
+    "max_size": [ "100% - 10px", 20 ],
     "anchor_from": "bottom_middle",
     "anchor_to": "bottom_middle",
-    "offset": [
-      0,
-      -6
-    ],
+    "offset": [ 0, -10 ],
     "text_alignment": "center",
     "font_type": "smooth",
     "font_size": "normal",
     "font_scale_factor": 0.9,
-    "color": [
-      1.0,
-      1.0,
-      1.0
-    ],
-    "shadow": true,
+    "color": [ 0.92, 0.92, 0.96 ],
+    "shadow": false,
     "hide_hyphen": true,
     "localize": false,
-    "layer": 4,
+    "layer": 3,
     "bindings": [
       {
         "binding_name": "#null",
@@ -603,13 +344,12 @@
       }
     ]
   },
-  "//fallback": "=== DAQUI PRA BAIXO: versao FACTORY (coluna unica), shape literal do vanilla server_form. Trocar em sonhe_forms.json: sonhe_forms.grid_screen -> sonhe_forms.list_screen. Recebeu a MESMA topologia fundo-pai do R1, entao tambem acompanha o conteudo. Usar quando a contagem de botoes for ilimitada ('Minhas vendas'), onde o grid de 12 celulas nao serve. ===",
+
+  "//fallback": "=== DAQUI PRA BAIXO: versao FACTORY (coluna unica), shape literal do vanilla server_form. Trocar em sonhe_forms.json: sonhe_forms.grid_screen -> sonhe_forms.list_screen. Tambem no tema dark, tambem sem asset custom. ===",
+
   "list_screen": {
     "type": "panel",
-    "size": [
-      320,
-      452
-    ],
+    "size": [ 320, 452 ],
     "anchor_from": "center",
     "anchor_to": "center",
     "controls": [
@@ -617,15 +357,8 @@
         "list_edge": {
           "type": "image",
           "texture": "textures/ui/white_background",
-          "size": [
-            "100% + 2px",
-            "100% + 2px"
-          ],
-          "color": [
-            0.42,
-            0.4,
-            0.5
-          ],
+          "size": [ "100% + 2px", "100% + 2px" ],
+          "color": [ 0.42, 0.40, 0.50 ],
           "alpha": 0.5,
           "layer": 0
         }
@@ -634,97 +367,36 @@
         "list_bg": {
           "type": "image",
           "texture": "textures/ui/Black",
-          "size": [
-            "100%",
-            "100%"
-          ],
+          "size": [ "100%", "100%" ],
           "alpha": 0.7,
           "layer": 1
         }
       },
-      {
-        "list_content@sonhe_forms.list_stack": {
-          "layer": 2
-        }
-      }
+      { "list_content@sonhe_forms.list_stack": { "layer": 2 } }
     ]
   },
+
   "list_stack": {
     "type": "stack_panel",
     "orientation": "vertical",
-    "size": [
-      288,
-      "100%c"
-    ],
+    "size": [ 288, "100%c" ],
     "anchor_from": "top_middle",
     "anchor_to": "top_middle",
-    "layer": 3,
+    "offset": [ 0, 16 ],
     "controls": [
-      {
-        "list_pad_top": {
-          "type": "panel",
-          "size": [
-            "100%",
-            8
-          ]
-        }
-      },
-      {
-        "list_title@sonhe_forms.screen_title": {}
-      },
-      {
-        "list_gap_a": {
-          "type": "panel",
-          "size": [
-            "100%",
-            4
-          ]
-        }
-      },
-      {
-        "list_rule@sonhe_forms.title_rule": {}
-      },
-      {
-        "list_gap_b": {
-          "type": "panel",
-          "size": [
-            "100%",
-            8
-          ]
-        }
-      },
-      {
-        "list_body@sonhe_forms.screen_body": {}
-      },
-      {
-        "list_gap_c": {
-          "type": "panel",
-          "size": [
-            "100%",
-            12
-          ]
-        }
-      },
-      {
-        "list_rows@sonhe_forms.buttons_factory": {}
-      },
-      {
-        "list_pad_bottom": {
-          "type": "panel",
-          "size": [
-            "100%",
-            10
-          ]
-        }
-      }
+      { "list_title@sonhe_forms.screen_title": {} },
+      { "list_gap_a": { "type": "panel", "size": [ "100%", 4 ] } },
+      { "list_rule@sonhe_forms.title_rule": {} },
+      { "list_gap_b": { "type": "panel", "size": [ "100%", 8 ] } },
+      { "list_body@sonhe_forms.screen_body": {} },
+      { "list_gap_c": { "type": "panel", "size": [ "100%", 12 ] } },
+      { "list_rows@sonhe_forms.buttons_factory": {} }
     ]
   },
+
   "buttons_factory": {
     "type": "stack_panel",
-    "size": [
-      "100%",
-      "100%c"
-    ],
+    "size": [ "100%", "100%c" ],
     "orientation": "vertical",
     "anchor_from": "top_middle",
     "anchor_to": "top_middle",
@@ -745,33 +417,23 @@
       }
     ]
   },
+
   "row_button": {
     "type": "stack_panel",
-    "size": [
-      "100%",
-      32
-    ],
+    "size": [ "100%", 32 ],
     "orientation": "horizontal",
     "controls": [
-      {
-        "holder@sonhe_forms.row_icon_holder": {}
-      },
+      { "holder@sonhe_forms.row_icon_holder": {} },
       {
         "row_text@common_buttons.light_text_button": {
           "$pressed_button_name": "button.form_button_click",
           "anchor_from": "top_left",
           "anchor_to": "top_left",
-          "size": [
-            "fill",
-            32
-          ],
+          "size": [ "fill", 32 ],
           "$button_text": "#form_button_text",
           "$button_text_binding_type": "collection",
           "$button_text_grid_collection_name": "form_buttons",
-          "$button_text_max_size": [
-            "100%",
-            20
-          ],
+          "$button_text_max_size": [ "100%", 20 ],
           "bindings": [
             {
               "binding_type": "collection_details",
@@ -782,12 +444,10 @@
       }
     ]
   },
+
   "row_icon_holder": {
     "type": "panel",
-    "size": [
-      34,
-      "100%c"
-    ],
+    "size": [ 34, "100%c" ],
     "bindings": [
       {
         "binding_type": "view",
@@ -802,15 +462,8 @@
         "row_icon": {
           "type": "image",
           "layer": 2,
-          "size": [
-            32,
-            32
-          ],
-          "keep_ratio": true,
-          "offset": [
-            0,
-            0
-          ],
+          "size": [ 32, 32 ],
+          "offset": [ 0, 0 ],
           "bindings": [
             {
               "binding_name": "#form_button_texture",
