@@ -69,39 +69,63 @@ for (const arquivo of fs.readdirSync(UI_DIR).filter(f => f.endsWith('.json'))) {
     }
   }
 
-  // pai que depende dos filhos segurando filho que depende do pai
-  (function circular(nome, def) {
-    if (!def || typeof def !== 'object') return;
-    for (const filho of def.controls || []) {
-      for (const [k, v] of Object.entries(filho)) {
-        const fs_ = v && v.size;
-        if (Array.isArray(def.size) && Array.isArray(fs_)) {
-          for (const eixo of [0, 1]) {
-            if (DEP_FILHO(def.size[eixo]) && DEP_PAI(fs_[eixo]))
-              err('circular em ' + nome + ' -> ' + k + ' (eixo ' + (eixo ? 'Y' : 'X') + '): pai ' +
-                  JSON.stringify(def.size[eixo]) + ' com filho ' + JSON.stringify(fs_[eixo]));
-          }
-        }
-        circular(nome + '/' + k, v);
-      }
-    }
-  });
-  for (const [nome, def] of Object.entries(j)) {
-    if (!def || typeof def !== 'object' || !def.controls) continue;
-    (function walk(n, d) {
+  // pai que depende dos filhos segurando filho que depende do pai.
+  // CRITICO: um filho instanciado como "nome@namespace.base" costuma ser so
+  // um override ({} ou algumas chaves) — o "size"/"controls" de verdade mora
+  // no def BASE. Sem resolver isso, a checagem nunca enxerga a cadeia real
+  // (foi exatamente esse buraco que deixou passar uma regressao em jogo).
+  const resolveBase = (node, chave) => {
+    if (!chave.includes('@')) return node;
+    const baseNome = chave.split('@')[1].split('.').pop();
+    const base = j[baseNome];
+    if (!base) return node;
+    return Object.assign({}, base, node, { controls: node.controls || base.controls });
+  };
+  let cadeiasProfundidade = 0, maxProfundidadeVista = 0;
+  for (const [nomeRaiz, defRaiz] of Object.entries(j)) {
+    if (!defRaiz || typeof defRaiz !== 'object' || !defRaiz.controls) continue;
+    (function walk(nome, defBruto, profundidade) {
+      const d = resolveBase(defBruto, nome);
+      if (profundidade > maxProfundidadeVista) maxProfundidadeVista = profundidade;
       for (const filho of d.controls || []) {
-        for (const [k, v] of Object.entries(filho)) {
-          if (Array.isArray(d.size) && v && Array.isArray(v.size)) {
+        for (const [k, vBruto] of Object.entries(filho)) {
+          const v = resolveBase(vBruto, k);
+          if (Array.isArray(d.size) && Array.isArray(v.size)) {
             for (const eixo of [0, 1]) {
               if (DEP_FILHO(d.size[eixo]) && DEP_PAI(v.size[eixo]))
-                err('circular ' + n + ' -> ' + k + ' eixo ' + (eixo ? 'Y' : 'X') + ': pai ' +
-                    JSON.stringify(d.size[eixo]) + ' / filho ' + JSON.stringify(v.size[eixo]));
+                err('circular ' + nome.split('@')[0] + ' -> ' + k.split('@')[0] + ' eixo ' + (eixo ? 'Y' : 'X') +
+                    ': pai ' + JSON.stringify(d.size[eixo]) + ' / filho ' + JSON.stringify(v.size[eixo]));
             }
           }
-          if (v && v.controls) walk(n + '/' + k, v);
+          if (v.controls) walk(k, v, profundidade + 1);
         }
       }
-    })(nome, def);
+    })(nomeRaiz, defRaiz, 0);
+    cadeiasProfundidade++;
+  }
+  ok('cadeia de tamanho resolvida com @base em ' + cadeiasProfundidade + ' raiz(es), profundidade maxima ' + maxProfundidadeVista);
+
+  // Encadeamento de %c/%cm em MAIS DE UM NIVEL (pai %c cujo filho tambem e %c
+  // do PROPRIO filho dele) e um padrao que so temos fonte vanilla confirmando
+  // em UM nivel por vez. Cada nivel extra e area nao comprovada — avisa, nao
+  // bloqueia, mas deixa registrado pra nao repetir o erro de mudar isso junto
+  // com outra coisa sem poder isolar o teste.
+  for (const [nomeRaiz, defRaiz] of Object.entries(j)) {
+    if (!defRaiz || typeof defRaiz !== 'object' || !defRaiz.controls) continue;
+    (function walk(nome, defBruto, niveisEncadeados) {
+      const d = resolveBase(defBruto, nome);
+      const dTemPc = Array.isArray(d.size) && d.size.some(DEP_FILHO);
+      const nivel = dTemPc ? niveisEncadeados + 1 : 0;
+      if (nivel >= 3)
+        warn('encadeamento de %c/%cm em ' + nivel + ' niveis terminando em ' + nome.split('@')[0] +
+             ' — padrao sem confirmacao vanilla alem de 1 nivel; se quebrar em jogo, e o primeiro suspeito.');
+      for (const filho of d.controls || []) {
+        for (const [k, vBruto] of Object.entries(filho)) {
+          const v = resolveBase(vBruto, k);
+          if (v.controls) walk(k, v, nivel);
+        }
+      }
+    })(nomeRaiz, defRaiz, 0);
   }
 }
 
