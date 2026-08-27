@@ -26,11 +26,11 @@
       },
       {
         "panel_bg": {
-          "//": "FUNDO DO PAINEL: preto ~70% (mesmo valor do hud_screen.player_position vanilla). SEM propagate_alpha: o alpha nao vaza para os filhos, titulo/corpo/labels/icones ficam opacos.",
+          "//": "FUNDO DO PAINEL: subido de 0.7 pra 0.9. Cada tile soma OUTRA camada preta (.85) por cima deste fundo, entao a area dos tiles ficava bem mais opaca que o cabecalho (que so tem este fundo sozinho) - resultava no cabecalho deixando passar o mundo (rosa/vermelho do terreno) enquanto os tiles pareciam um bloco escuro separado. So o numero do alpha mudou, nada de estrutura.",
           "type": "image",
           "texture": "textures/ui/Black",
           "size": [ "100%", "100%" ],
-          "alpha": 0.7,
+          "alpha": 0.9,
           "layer": 1
         }
       },
